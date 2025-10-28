@@ -9,6 +9,7 @@ import (
 
 type Router struct {
 	authController    *controller.AuthController
+	storeController   *controller.StoreController
 	productController *controller.ProductController
 	cartController    *controller.CartController
 	orderController   *controller.OrderController
@@ -18,6 +19,7 @@ type Router struct {
 
 func NewRouter(
 	authController *controller.AuthController,
+	storeController *controller.StoreController,
 	productController *controller.ProductController,
 	cartController *controller.CartController,
 	orderController *controller.OrderController,
@@ -26,6 +28,7 @@ func NewRouter(
 ) *Router {
 	return &Router{
 		authController:    authController,
+		storeController:   storeController,
 		productController: productController,
 		cartController:    cartController,
 		orderController:   orderController,
@@ -35,33 +38,23 @@ func NewRouter(
 }
 
 func (r *Router) Setup() *gin.Engine {
-	// Set Gin mode
 	gin.SetMode(r.config.Server.GinMode)
 
-	// Create router without default middleware
 	router := gin.New()
 
-	// Recovery middleware - recovers from panics
 	router.Use(gin.Recovery())
-
-	// Custom logging middleware
 	router.Use(middleware.LoggingMiddleware())
-
-	// CORS middleware
 	router.Use(corsMiddleware(r.config.CORS.AllowedOrigins))
 
-	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status": "healthy",
+			"status":  "healthy",
 			"message": "UDONGGEUM API is running",
 		})
 	})
 
-	// API v1 routes
 	v1 := router.Group("/api/v1")
 	{
-		// Auth routes (public)
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/register", r.authController.Register)
@@ -69,13 +62,34 @@ func (r *Router) Setup() *gin.Engine {
 			auth.GET("/me", r.authMiddleware.Authenticate(), r.authController.GetMe)
 		}
 
-		// Product routes
+		stores := v1.Group("/stores")
+		{
+			stores.GET("", r.storeController.ListStores)
+			stores.GET("/locations", r.storeController.ListLocations)
+			stores.GET("/:id", r.storeController.GetStoreByID)
+			stores.POST("",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.storeController.CreateStore,
+			)
+			stores.PUT("/:id",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.storeController.UpdateStore,
+			)
+			stores.DELETE("/:id",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.storeController.DeleteStore,
+			)
+		}
+
 		products := v1.Group("/products")
 		{
 			products.GET("", r.productController.GetAllProducts)
+			products.GET("/popular", r.productController.GetPopularProducts)
 			products.GET("/:id", r.productController.GetProductByID)
 
-			// Admin only routes
 			products.POST("",
 				r.authMiddleware.Authenticate(),
 				r.authMiddleware.RequireRole("admin"),
@@ -93,7 +107,6 @@ func (r *Router) Setup() *gin.Engine {
 			)
 		}
 
-		// Cart routes (protected)
 		cart := v1.Group("/cart")
 		cart.Use(r.authMiddleware.Authenticate())
 		{
@@ -104,7 +117,6 @@ func (r *Router) Setup() *gin.Engine {
 			cart.DELETE("", r.cartController.ClearCart)
 		}
 
-		// Order routes (protected)
 		orders := v1.Group("/orders")
 		orders.Use(r.authMiddleware.Authenticate())
 		{
@@ -112,7 +124,6 @@ func (r *Router) Setup() *gin.Engine {
 			orders.GET("/:id", r.orderController.GetOrderByID)
 			orders.POST("", r.orderController.CreateOrder)
 
-			// Admin only routes
 			orders.PUT("/:id/status",
 				r.authMiddleware.RequireRole("admin"),
 				r.orderController.UpdateOrderStatus,
@@ -124,12 +135,10 @@ func (r *Router) Setup() *gin.Engine {
 	return router
 }
 
-// corsMiddleware handles CORS
 func corsMiddleware(allowedOrigins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
 
-		// Check if origin is allowed
 		allowed := false
 		for _, allowedOrigin := range allowedOrigins {
 			if origin == allowedOrigin || allowedOrigin == "*" {

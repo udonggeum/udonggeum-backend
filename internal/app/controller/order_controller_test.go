@@ -20,11 +20,15 @@ import (
 func setupOrderControllerTest(t *testing.T) (*OrderController, *gin.Engine, *gorm.DB, *model.User, *model.Product) {
 	testDB, err := db.SetupTestDB()
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.CleanupTestDB(testDB)
+	})
 
 	orderRepo := repository.NewOrderRepository(testDB)
 	cartRepo := repository.NewCartRepository(testDB)
 	productRepo := repository.NewProductRepository(testDB)
-	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, testDB)
+	productOptionRepo := repository.NewProductOptionRepository(testDB)
+	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, testDB, productOptionRepo)
 	orderController := NewOrderController(orderService)
 
 	// Create test user
@@ -36,12 +40,22 @@ func setupOrderControllerTest(t *testing.T) (*OrderController, *gin.Engine, *gor
 	}
 	testDB.Create(user)
 
+	store := &model.Store{
+		UserID:   user.ID,
+		Name:     "Test Store",
+		Region:   "서울특별시",
+		District: "강남구",
+		Address:  "서울시 강남구 테스트로 1",
+	}
+	testDB.Create(store)
+
 	// Create test product
 	product := &model.Product{
 		Name:          "Test Product",
 		Price:         100000,
 		Category:      model.CategoryGold,
 		StockQuantity: 10,
+		StoreID:       store.ID,
 	}
 	testDB.Create(product)
 
@@ -244,6 +258,7 @@ func TestOrderController_CreateOrder_Success(t *testing.T) {
 
 	reqBody := CreateOrderRequest{
 		ShippingAddress: "서울시 강남구 테헤란로 123",
+		FulfillmentType: model.FulfillmentDelivery,
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
@@ -271,6 +286,7 @@ func TestOrderController_CreateOrder_Unauthorized(t *testing.T) {
 
 	reqBody := CreateOrderRequest{
 		ShippingAddress: "서울시 강남구",
+		FulfillmentType: model.FulfillmentDelivery,
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
@@ -298,6 +314,7 @@ func TestOrderController_CreateOrder_EmptyCart(t *testing.T) {
 
 	reqBody := CreateOrderRequest{
 		ShippingAddress: "서울시 강남구",
+		FulfillmentType: model.FulfillmentDelivery,
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
@@ -333,6 +350,7 @@ func TestOrderController_CreateOrder_InsufficientStock(t *testing.T) {
 
 	reqBody := CreateOrderRequest{
 		ShippingAddress: "서울시 강남구",
+		FulfillmentType: model.FulfillmentDelivery,
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
@@ -365,16 +383,16 @@ func TestOrderController_CreateOrder_InvalidRequest(t *testing.T) {
 		wantError  string
 	}{
 		{
-			name:       "Missing shipping address",
+			name:       "Missing shipping address for delivery",
 			reqBody:    map[string]interface{}{},
 			wantStatus: http.StatusBadRequest,
-			wantError:  "Invalid request data",
+			wantError:  "Invalid fulfillment selection",
 		},
 		{
-			name:       "Empty shipping address",
-			reqBody:    map[string]interface{}{"shipping_address": ""},
+			name:       "Explicit empty shipping for delivery",
+			reqBody:    map[string]interface{}{"shipping_address": "", "fulfillment_type": string(model.FulfillmentDelivery)},
 			wantStatus: http.StatusBadRequest,
-			wantError:  "Invalid request data",
+			wantError:  "Invalid fulfillment selection",
 		},
 	}
 

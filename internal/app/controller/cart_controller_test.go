@@ -20,10 +20,14 @@ import (
 func setupCartControllerTest(t *testing.T) (*CartController, *gin.Engine, *gorm.DB, *model.User, *model.Product) {
 	testDB, err := db.SetupTestDB()
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.CleanupTestDB(testDB)
+	})
 
 	cartRepo := repository.NewCartRepository(testDB)
 	productRepo := repository.NewProductRepository(testDB)
-	cartService := service.NewCartService(cartRepo, productRepo)
+	productOptionRepo := repository.NewProductOptionRepository(testDB)
+	cartService := service.NewCartService(cartRepo, productRepo, productOptionRepo)
 	cartController := NewCartController(cartService)
 
 	// Create test user
@@ -35,12 +39,22 @@ func setupCartControllerTest(t *testing.T) (*CartController, *gin.Engine, *gorm.
 	}
 	testDB.Create(user)
 
+	store := &model.Store{
+		UserID:   user.ID,
+		Name:     "Test Store",
+		Region:   "서울특별시",
+		District: "강남구",
+		Address:  "서울시 강남구 테스트로 1",
+	}
+	testDB.Create(store)
+
 	// Create test product
 	product := &model.Product{
 		Name:          "Test Product",
 		Price:         100000,
 		Category:      model.CategoryGold,
 		StockQuantity: 10,
+		StoreID:       store.ID,
 	}
 	testDB.Create(product)
 

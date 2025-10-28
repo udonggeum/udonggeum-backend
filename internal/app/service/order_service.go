@@ -2,20 +2,23 @@ package service
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/repository"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
-	ErrOrderNotFound = errors.New("order not found")
-	ErrEmptyCart     = errors.New("cart is empty")
+	ErrOrderNotFound      = errors.New("order not found")
+	ErrEmptyCart          = errors.New("cart is empty")
+	ErrInvalidFulfillment = errors.New("invalid fulfillment selection")
 )
 
 type OrderService interface {
-	CreateOrderFromCart(userID uint, shippingAddress string) (*model.Order, error)
+	CreateOrderFromCart(userID uint, shippingAddress string, fulfillmentType model.FulfillmentType, pickupStoreID *uint) (*model.Order, error)
 	GetUserOrders(userID uint) ([]model.Order, error)
 	GetOrderByID(userID, orderID uint) (*model.Order, error)
 	UpdateOrderStatus(orderID uint, status model.OrderStatus) error
@@ -23,10 +26,11 @@ type OrderService interface {
 }
 
 type orderService struct {
-	orderRepo   repository.OrderRepository
-	cartRepo    repository.CartRepository
-	productRepo repository.ProductRepository
-	db          *gorm.DB
+	orderRepo         repository.OrderRepository
+	cartRepo          repository.CartRepository
+	productRepo       repository.ProductRepository
+	productOptionRepo repository.ProductOptionRepository
+	db                *gorm.DB
 }
 
 func NewOrderService(
@@ -34,22 +38,39 @@ func NewOrderService(
 	cartRepo repository.CartRepository,
 	productRepo repository.ProductRepository,
 	db *gorm.DB,
+	productOptionRepo ...repository.ProductOptionRepository,
 ) OrderService {
+	var optionRepo repository.ProductOptionRepository
+	if len(productOptionRepo) > 0 {
+		optionRepo = productOptionRepo[0]
+	}
 	return &orderService{
-		orderRepo:   orderRepo,
-		cartRepo:    cartRepo,
-		productRepo: productRepo,
-		db:          db,
+		orderRepo:         orderRepo,
+		cartRepo:          cartRepo,
+		productRepo:       productRepo,
+		productOptionRepo: optionRepo,
+		db:                db,
 	}
 }
 
-func (s *orderService) CreateOrderFromCart(userID uint, shippingAddress string) (*model.Order, error) {
+func (s *orderService) CreateOrderFromCart(userID uint, shippingAddress string, fulfillmentType model.FulfillmentType, pickupStoreID *uint) (*model.Order, error) {
+	if fulfillmentType == "" {
+		fulfillmentType = model.FulfillmentDelivery
+	}
+
 	logger.Info("Creating order from cart", map[string]interface{}{
 		"user_id":          userID,
-		"shipping_address": shippingAddress,
+		"fulfillment_type": fulfillmentType,
+		"pickup_store_id":  pickupStoreID,
 	})
 
-	// Get cart items
+	if fulfillmentType == model.FulfillmentDelivery && shippingAddress == "" {
+		logger.Warn("Delivery requires shipping address", map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, ErrInvalidFulfillment
+	}
+
 	cartItems, err := s.cartRepo.FindByUserID(userID)
 	if err != nil {
 		logger.Error("Failed to fetch cart items", err, map[string]interface{}{
@@ -65,32 +86,42 @@ func (s *orderService) CreateOrderFromCart(userID uint, shippingAddress string) 
 		return nil, ErrEmptyCart
 	}
 
-	logger.Debug("Processing cart items", map[string]interface{}{
+	logger.Debug("Processing cart items for order", map[string]interface{}{
 		"user_id":    userID,
 		"item_count": len(cartItems),
 	})
 
-	// Start transaction
 	tx := s.db.Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			logger.Error("Panic during order creation, rolling back", nil, map[string]interface{}{
+			logger.Error("Panic during order creation, rolling back", fmt.Errorf("panic: %v", r), map[string]interface{}{
 				"user_id": userID,
-				"panic":   r,
 			})
 		}
 	}()
 
-	// Calculate total and create order items
-	var totalAmount float64
-	var orderItems []model.OrderItem
+	var (
+		totalAmount      float64
+		orderItems       []model.OrderItem
+		resolvedPickupID *uint
+		resolvedPickAddr string
+	)
 
 	for _, cartItem := range cartItems {
-		// Check stock
-		product, err := s.productRepo.FindByID(cartItem.ProductID)
-		if err != nil {
+		var product model.Product
+		if err := tx.
+			Clauses(clause.Locking{Strength: "UPDATE"}).
+			Preload("Store").
+			First(&product, cartItem.ProductID).Error; err != nil {
 			tx.Rollback()
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				logger.Warn("Product not found during order creation", map[string]interface{}{
+					"user_id":    userID,
+					"product_id": cartItem.ProductID,
+				})
+				return nil, ErrProductNotFound
+			}
 			logger.Error("Failed to fetch product during order creation", err, map[string]interface{}{
 				"user_id":    userID,
 				"product_id": cartItem.ProductID,
@@ -100,52 +131,137 @@ func (s *orderService) CreateOrderFromCart(userID uint, shippingAddress string) 
 
 		if product.StockQuantity < cartItem.Quantity {
 			tx.Rollback()
-			logger.Warn("Order creation failed: insufficient stock", map[string]interface{}{
-				"user_id":         userID,
-				"product_id":      cartItem.ProductID,
-				"requested":       cartItem.Quantity,
-				"available_stock": product.StockQuantity,
+			logger.Warn("Order creation failed: insufficient product stock", map[string]interface{}{
+				"user_id":    userID,
+				"product_id": cartItem.ProductID,
+				"requested":  cartItem.Quantity,
+				"available":  product.StockQuantity,
 			})
 			return nil, ErrInsufficientStock
 		}
 
-		// Create order item
-		orderItem := model.OrderItem{
-			ProductID: cartItem.ProductID,
-			Quantity:  cartItem.Quantity,
-			Price:     product.Price,
+		var option *model.ProductOption
+		if cartItem.ProductOptionID != nil {
+			var opt model.ProductOption
+			if err := tx.
+				Clauses(clause.Locking{Strength: "UPDATE"}).
+				First(&opt, *cartItem.ProductOptionID).Error; err != nil {
+				tx.Rollback()
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					logger.Warn("Product option not found during order creation", map[string]interface{}{
+						"user_id":           userID,
+						"product_option_id": *cartItem.ProductOptionID,
+					})
+					return nil, ErrInvalidProductOption
+				}
+				logger.Error("Failed to fetch product option during order creation", err, map[string]interface{}{
+					"user_id":           userID,
+					"product_option_id": *cartItem.ProductOptionID,
+				})
+				return nil, err
+			}
+			if opt.ProductID != cartItem.ProductID {
+				tx.Rollback()
+				logger.Warn("Product option mismatch during order creation", map[string]interface{}{
+					"user_id":           userID,
+					"product_id":        cartItem.ProductID,
+					"product_option_id": *cartItem.ProductOptionID,
+				})
+				return nil, ErrInvalidProductOption
+			}
+			if opt.StockQuantity < cartItem.Quantity {
+				tx.Rollback()
+				logger.Warn("Order creation failed: insufficient option stock", map[string]interface{}{
+					"user_id":           userID,
+					"product_option_id": opt.ID,
+					"requested":         cartItem.Quantity,
+					"available":         opt.StockQuantity,
+				})
+				return nil, ErrInsufficientStock
+			}
+			tmp := opt
+			option = &tmp
 		}
-		orderItems = append(orderItems, orderItem)
-		totalAmount += product.Price * float64(cartItem.Quantity)
 
-		logger.Debug("Processing order item", map[string]interface{}{
-			"user_id":    userID,
-			"product_id": cartItem.ProductID,
-			"quantity":   cartItem.Quantity,
-			"price":      product.Price,
+		if fulfillmentType == model.FulfillmentPickup {
+			if resolvedPickupID == nil {
+				if pickupStoreID != nil {
+					resolvedPickupID = pickupStoreID
+				} else {
+					id := product.StoreID
+					resolvedPickupID = &id
+				}
+				resolvedPickAddr = product.Store.Address
+			}
+			if product.StoreID != *resolvedPickupID {
+				tx.Rollback()
+				logger.Warn("Pickup order contains multiple stores", map[string]interface{}{
+					"user_id":        userID,
+					"existing_store": *resolvedPickupID,
+					"item_store":     product.StoreID,
+				})
+				return nil, ErrInvalidFulfillment
+			}
+		}
+
+		unitPrice := product.Price
+		var optionSnapshot string
+		if option != nil {
+			unitPrice += option.AdditionalPrice
+			optionSnapshot = fmt.Sprintf("%s: %s", option.Name, option.Value)
+		}
+
+		orderItems = append(orderItems, model.OrderItem{
+			ProductID:       cartItem.ProductID,
+			ProductOptionID: cartItem.ProductOptionID,
+			StoreID:         product.StoreID,
+			Quantity:        cartItem.Quantity,
+			Price:           unitPrice,
+			OptionSnapshot:  optionSnapshot,
 		})
+		totalAmount += unitPrice * float64(cartItem.Quantity)
 
-		// Update stock
-		err = s.productRepo.UpdateStock(product.ID, -cartItem.Quantity)
-		if err != nil {
+		if err := tx.Model(&model.Product{}).
+			Where("id = ?", product.ID).
+			Clauses(clause.Locking{Strength: "UPDATE"}).
+			Update("stock_quantity", gorm.Expr("stock_quantity - ?", cartItem.Quantity)).Error; err != nil {
 			tx.Rollback()
 			logger.Error("Failed to update product stock", err, map[string]interface{}{
 				"user_id":    userID,
 				"product_id": product.ID,
-				"quantity":   -cartItem.Quantity,
 			})
 			return nil, err
 		}
+
+		if option != nil {
+			if err := tx.Model(&model.ProductOption{}).
+				Where("id = ?", option.ID).
+				Clauses(clause.Locking{Strength: "UPDATE"}).
+				Update("stock_quantity", gorm.Expr("stock_quantity - ?", cartItem.Quantity)).Error; err != nil {
+				tx.Rollback()
+				logger.Error("Failed to update product option stock", err, map[string]interface{}{
+					"user_id":           userID,
+					"product_option_id": option.ID,
+				})
+				return nil, err
+			}
+		}
 	}
 
-	// Create order
 	order := &model.Order{
 		UserID:          userID,
 		TotalAmount:     totalAmount,
+		TotalPrice:      totalAmount,
 		Status:          model.OrderStatusPending,
 		PaymentStatus:   model.PaymentStatusPending,
+		FulfillmentType: fulfillmentType,
 		ShippingAddress: shippingAddress,
 		OrderItems:      orderItems,
+	}
+
+	if fulfillmentType == model.FulfillmentPickup {
+		order.ShippingAddress = resolvedPickAddr
+		order.PickupStoreID = resolvedPickupID
 	}
 
 	if err := tx.Create(order).Error; err != nil {
@@ -157,17 +273,10 @@ func (s *orderService) CreateOrderFromCart(userID uint, shippingAddress string) 
 		return nil, err
 	}
 
-	logger.Debug("Order created, clearing cart", map[string]interface{}{
-		"user_id":  userID,
-		"order_id": order.ID,
-	})
-
-	// Clear cart
 	if err := tx.Where("user_id = ?", userID).Delete(&model.CartItem{}).Error; err != nil {
 		tx.Rollback()
 		logger.Error("Failed to clear cart after order creation", err, map[string]interface{}{
-			"user_id":  userID,
-			"order_id": order.ID,
+			"user_id": userID,
 		})
 		return nil, err
 	}
@@ -181,15 +290,13 @@ func (s *orderService) CreateOrderFromCart(userID uint, shippingAddress string) 
 	}
 
 	logger.Info("Order created successfully", map[string]interface{}{
-		"user_id":       userID,
-		"order_id":      order.ID,
-		"total_amount":  totalAmount,
-		"item_count":    len(orderItems),
-		"order_status":  order.Status,
-		"payment_status": order.PaymentStatus,
+		"user_id":          userID,
+		"order_id":         order.ID,
+		"total_amount":     totalAmount,
+		"item_count":       len(orderItems),
+		"fulfillment_type": fulfillmentType,
 	})
 
-	// Reload order with associations
 	return s.orderRepo.FindByID(order.ID)
 }
 
@@ -235,7 +342,6 @@ func (s *orderService) GetOrderByID(userID, orderID uint) (*model.Order, error) 
 		return nil, err
 	}
 
-	// Verify ownership
 	if order.UserID != userID {
 		logger.Warn("Order access denied: ownership mismatch", map[string]interface{}{
 			"user_id":  userID,

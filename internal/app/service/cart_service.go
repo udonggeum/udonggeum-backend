@@ -15,24 +15,31 @@ var (
 
 type CartService interface {
 	GetUserCart(userID uint) ([]model.CartItem, error)
-	AddToCart(userID, productID uint, quantity int) error
+	AddToCart(userID, productID uint, productOptionID *uint, quantity int) error
 	UpdateCartItem(userID, cartItemID uint, quantity int) error
 	RemoveFromCart(userID, cartItemID uint) error
 	ClearCart(userID uint) error
 }
 
 type cartService struct {
-	cartRepo    repository.CartRepository
-	productRepo repository.ProductRepository
+	cartRepo          repository.CartRepository
+	productRepo       repository.ProductRepository
+	productOptionRepo repository.ProductOptionRepository
 }
 
 func NewCartService(
 	cartRepo repository.CartRepository,
 	productRepo repository.ProductRepository,
+	productOptionRepo ...repository.ProductOptionRepository,
 ) CartService {
+	var optionRepo repository.ProductOptionRepository
+	if len(productOptionRepo) > 0 {
+		optionRepo = productOptionRepo[0]
+	}
 	return &cartService{
-		cartRepo:    cartRepo,
-		productRepo: productRepo,
+		cartRepo:          cartRepo,
+		productRepo:       productRepo,
+		productOptionRepo: optionRepo,
 	}
 }
 
@@ -56,14 +63,14 @@ func (s *cartService) GetUserCart(userID uint) ([]model.CartItem, error) {
 	return cartItems, nil
 }
 
-func (s *cartService) AddToCart(userID, productID uint, quantity int) error {
+func (s *cartService) AddToCart(userID, productID uint, productOptionID *uint, quantity int) error {
 	logger.Info("Adding item to cart", map[string]interface{}{
-		"user_id":    userID,
-		"product_id": productID,
-		"quantity":   quantity,
+		"user_id":           userID,
+		"product_id":        productID,
+		"product_option_id": productOptionID,
+		"quantity":          quantity,
 	})
 
-	// Check if product exists and has sufficient stock
 	product, err := s.productRepo.FindByID(productID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -80,18 +87,41 @@ func (s *cartService) AddToCart(userID, productID uint, quantity int) error {
 		return err
 	}
 
-	if product.StockQuantity < quantity {
-		logger.Warn("Cannot add to cart: insufficient stock", map[string]interface{}{
-			"user_id":          userID,
-			"product_id":       productID,
-			"requested":        quantity,
-			"available_stock":  product.StockQuantity,
-		})
-		return ErrInsufficientStock
+	var option *model.ProductOption
+	if productOptionID != nil {
+		if s.productOptionRepo == nil {
+			logger.Warn("Cannot add to cart: product option repository unavailable", map[string]interface{}{
+				"user_id":           userID,
+				"product_id":        productID,
+				"product_option_id": *productOptionID,
+			})
+			return ErrInvalidProductOption
+		}
+		opt, err := s.productOptionRepo.FindByID(*productOptionID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				logger.Warn("Product option not found", map[string]interface{}{
+					"product_option_id": *productOptionID,
+				})
+				return ErrInvalidProductOption
+			}
+			logger.Error("Failed to fetch product option", err, map[string]interface{}{
+				"product_option_id": *productOptionID,
+			})
+			return err
+		}
+
+		if opt.ProductID != productID {
+			logger.Warn("Product option mismatch", map[string]interface{}{
+				"product_id":        productID,
+				"product_option_id": *productOptionID,
+			})
+			return ErrInvalidProductOption
+		}
+		option = opt
 	}
 
-	// Check if item already in cart
-	existingItem, err := s.cartRepo.FindByUserAndProduct(userID, productID)
+	existingItem, err := s.cartRepo.FindByUserProductOption(userID, productID, productOptionID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		logger.Error("Failed to check existing cart item", err, map[string]interface{}{
 			"user_id":    userID,
@@ -100,52 +130,64 @@ func (s *cartService) AddToCart(userID, productID uint, quantity int) error {
 		return err
 	}
 
+	requestedQuantity := quantity
 	if existingItem != nil {
-		// Update quantity
-		logger.Debug("Updating existing cart item", map[string]interface{}{
-			"user_id":       userID,
-			"cart_item_id":  existingItem.ID,
-			"old_quantity":  existingItem.Quantity,
-			"new_quantity":  existingItem.Quantity + quantity,
+		requestedQuantity = existingItem.Quantity + quantity
+	}
+
+	if product.StockQuantity < requestedQuantity {
+		logger.Warn("Cannot add to cart: insufficient product stock", map[string]interface{}{
+			"user_id":    userID,
+			"product_id": productID,
+			"requested":  requestedQuantity,
+			"available":  product.StockQuantity,
 		})
-		existingItem.Quantity += quantity
+		return ErrInsufficientStock
+	}
+
+	if option != nil && option.StockQuantity < requestedQuantity {
+		logger.Warn("Cannot add to cart: insufficient option stock", map[string]interface{}{
+			"user_id":           userID,
+			"product_option_id": option.ID,
+			"requested":         requestedQuantity,
+			"available":         option.StockQuantity,
+		})
+		return ErrInsufficientStock
+	}
+
+	if existingItem != nil {
+		logger.Debug("Updating existing cart item", map[string]interface{}{
+			"cart_item_id": existingItem.ID,
+			"old_qty":      existingItem.Quantity,
+			"new_qty":      requestedQuantity,
+		})
+		existingItem.Quantity = requestedQuantity
 		if err := s.cartRepo.Update(existingItem); err != nil {
 			logger.Error("Failed to update cart item", err, map[string]interface{}{
-				"user_id":      userID,
 				"cart_item_id": existingItem.ID,
 			})
 			return err
 		}
-		logger.Info("Cart item updated successfully", map[string]interface{}{
-			"user_id":      userID,
-			"cart_item_id": existingItem.ID,
-			"product_id":   productID,
-			"quantity":     existingItem.Quantity,
-		})
 		return nil
 	}
 
-	// Create new cart item
 	cartItem := &model.CartItem{
-		UserID:    userID,
-		ProductID: productID,
-		Quantity:  quantity,
+		UserID:          userID,
+		ProductID:       productID,
+		ProductOptionID: productOptionID,
+		Quantity:        quantity,
 	}
 
 	if err := s.cartRepo.Create(cartItem); err != nil {
 		logger.Error("Failed to create cart item", err, map[string]interface{}{
 			"user_id":    userID,
 			"product_id": productID,
-			"quantity":   quantity,
 		})
 		return err
 	}
 
 	logger.Info("Cart item added successfully", map[string]interface{}{
-		"user_id":      userID,
 		"cart_item_id": cartItem.ID,
-		"product_id":   productID,
-		"quantity":     quantity,
 	})
 	return nil
 }
@@ -161,19 +203,16 @@ func (s *cartService) UpdateCartItem(userID, cartItemID uint, quantity int) erro
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			logger.Warn("Cart item not found", map[string]interface{}{
-				"user_id":      userID,
 				"cart_item_id": cartItemID,
 			})
 			return ErrCartItemNotFound
 		}
 		logger.Error("Failed to fetch cart item", err, map[string]interface{}{
-			"user_id":      userID,
 			"cart_item_id": cartItemID,
 		})
 		return err
 	}
 
-	// Verify ownership
 	if cartItem.UserID != userID {
 		logger.Warn("Cart item access denied: ownership mismatch", map[string]interface{}{
 			"user_id":      userID,
@@ -183,11 +222,9 @@ func (s *cartService) UpdateCartItem(userID, cartItemID uint, quantity int) erro
 		return ErrCartItemNotFound
 	}
 
-	// Check stock
 	product, err := s.productRepo.FindByID(cartItem.ProductID)
 	if err != nil {
 		logger.Error("Failed to fetch product for stock check", err, map[string]interface{}{
-			"user_id":      userID,
 			"cart_item_id": cartItemID,
 			"product_id":   cartItem.ProductID,
 		})
@@ -195,43 +232,58 @@ func (s *cartService) UpdateCartItem(userID, cartItemID uint, quantity int) erro
 	}
 
 	if product.StockQuantity < quantity {
-		logger.Warn("Cannot update cart item: insufficient stock", map[string]interface{}{
-			"user_id":         userID,
-			"cart_item_id":    cartItemID,
-			"product_id":      cartItem.ProductID,
-			"requested":       quantity,
-			"available_stock": product.StockQuantity,
+		logger.Warn("Cannot update cart item: insufficient product stock", map[string]interface{}{
+			"cart_item_id": cartItemID,
+			"requested":    quantity,
+			"available":    product.StockQuantity,
 		})
 		return ErrInsufficientStock
 	}
 
-	logger.Debug("Updating cart item quantity", map[string]interface{}{
-		"user_id":      userID,
-		"cart_item_id": cartItemID,
-		"old_quantity": cartItem.Quantity,
-		"new_quantity": quantity,
-	})
+	if cartItem.ProductOptionID != nil {
+		option, err := s.productOptionRepo.FindByID(*cartItem.ProductOptionID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				logger.Warn("Product option not found for stock check", map[string]interface{}{
+					"cart_item_id":      cartItemID,
+					"product_option_id": *cartItem.ProductOptionID,
+				})
+				return ErrInvalidProductOption
+			}
+			logger.Error("Failed to fetch product option for stock check", err, map[string]interface{}{
+				"cart_item_id":      cartItemID,
+				"product_option_id": *cartItem.ProductOptionID,
+			})
+			return err
+		}
+
+		if option.StockQuantity < quantity {
+			logger.Warn("Cannot update cart item: insufficient option stock", map[string]interface{}{
+				"cart_item_id":      cartItemID,
+				"product_option_id": option.ID,
+				"requested":         quantity,
+				"available":         option.StockQuantity,
+			})
+			return ErrInsufficientStock
+		}
+	}
 
 	cartItem.Quantity = quantity
 	if err := s.cartRepo.Update(cartItem); err != nil {
 		logger.Error("Failed to update cart item", err, map[string]interface{}{
-			"user_id":      userID,
 			"cart_item_id": cartItemID,
 		})
 		return err
 	}
 
 	logger.Info("Cart item updated successfully", map[string]interface{}{
-		"user_id":      userID,
 		"cart_item_id": cartItemID,
-		"product_id":   cartItem.ProductID,
-		"quantity":     quantity,
 	})
 	return nil
 }
 
 func (s *cartService) RemoveFromCart(userID, cartItemID uint) error {
-	logger.Info("Removing item from cart", map[string]interface{}{
+	logger.Info("Removing cart item", map[string]interface{}{
 		"user_id":      userID,
 		"cart_item_id": cartItemID,
 	})
@@ -239,20 +291,17 @@ func (s *cartService) RemoveFromCart(userID, cartItemID uint) error {
 	cartItem, err := s.cartRepo.FindByID(cartItemID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Warn("Cart item not found", map[string]interface{}{
-				"user_id":      userID,
+			logger.Warn("Cart item not found for removal", map[string]interface{}{
 				"cart_item_id": cartItemID,
 			})
 			return ErrCartItemNotFound
 		}
-		logger.Error("Failed to fetch cart item", err, map[string]interface{}{
-			"user_id":      userID,
+		logger.Error("Failed to fetch cart item for removal", err, map[string]interface{}{
 			"cart_item_id": cartItemID,
 		})
 		return err
 	}
 
-	// Verify ownership
 	if cartItem.UserID != userID {
 		logger.Warn("Cart item removal denied: ownership mismatch", map[string]interface{}{
 			"user_id":      userID,
@@ -264,16 +313,13 @@ func (s *cartService) RemoveFromCart(userID, cartItemID uint) error {
 
 	if err := s.cartRepo.Delete(cartItemID); err != nil {
 		logger.Error("Failed to delete cart item", err, map[string]interface{}{
-			"user_id":      userID,
 			"cart_item_id": cartItemID,
 		})
 		return err
 	}
 
-	logger.Info("Cart item removed successfully", map[string]interface{}{
-		"user_id":      userID,
+	logger.Info("Cart item removed", map[string]interface{}{
 		"cart_item_id": cartItemID,
-		"product_id":   cartItem.ProductID,
 	})
 	return nil
 }
@@ -290,7 +336,7 @@ func (s *cartService) ClearCart(userID uint) error {
 		return err
 	}
 
-	logger.Info("Cart cleared successfully", map[string]interface{}{
+	logger.Info("User cart cleared", map[string]interface{}{
 		"user_id": userID,
 	})
 	return nil

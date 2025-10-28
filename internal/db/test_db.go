@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"gorm.io/driver/sqlite"
@@ -12,17 +13,19 @@ import (
 
 // SetupTestDB creates an in-memory SQLite database for testing
 func SetupTestDB() (*gorm.DB, error) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+	dsn := fmt.Sprintf("file:testdb_%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to test database: %w", err)
 	}
 
-	// Run migrations
 	err = db.AutoMigrate(
+		&model.Store{},
 		&model.User{},
 		&model.Product{},
+		&model.ProductOption{},
 		&model.Order{},
 		&model.OrderItem{},
 		&model.CartItem{},
@@ -46,7 +49,7 @@ func CleanupTestDB(db *gorm.DB) {
 
 // TruncateAllTables removes all data from tables
 func TruncateAllTables(db *gorm.DB) error {
-	tables := []string{"cart_items", "order_items", "orders", "products", "users"}
+	tables := []string{"cart_items", "order_items", "orders", "product_options", "products", "stores", "users"}
 	for _, table := range tables {
 		if err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)).Error; err != nil {
 			return err

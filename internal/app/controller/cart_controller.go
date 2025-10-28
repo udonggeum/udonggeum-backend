@@ -21,8 +21,9 @@ func NewCartController(cartService service.CartService) *CartController {
 }
 
 type AddToCartRequest struct {
-	ProductID uint `json:"product_id" binding:"required"`
-	Quantity  int  `json:"quantity" binding:"required,gt=0"`
+	ProductID       uint  `json:"product_id" binding:"required"`
+	ProductOptionID *uint `json:"product_option_id"`
+	Quantity        int   `json:"quantity" binding:"required,gt=0"`
 }
 
 type UpdateCartRequest struct {
@@ -57,7 +58,11 @@ func (ctrl *CartController) GetCart(c *gin.Context) {
 	// Calculate total
 	var total float64
 	for _, item := range cartItems {
-		total += item.Product.Price * float64(item.Quantity)
+		price := item.Product.Price
+		if item.ProductOptionID != nil {
+			price += item.ProductOption.AdditionalPrice
+		}
+		total += price * float64(item.Quantity)
 	}
 
 	log.Info("Cart fetched successfully", map[string]interface{}{
@@ -94,19 +99,20 @@ func (ctrl *CartController) AddToCart(c *gin.Context) {
 			"error":   err.Error(),
 		})
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
+			"error":   "Invalid request data",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	log.Debug("Adding item to cart", map[string]interface{}{
-		"user_id":    userID,
-		"product_id": req.ProductID,
-		"quantity":   req.Quantity,
+		"user_id":           userID,
+		"product_id":        req.ProductID,
+		"product_option_id": req.ProductOptionID,
+		"quantity":          req.Quantity,
 	})
 
-	err := ctrl.cartService.AddToCart(userID, req.ProductID, req.Quantity)
+	err := ctrl.cartService.AddToCart(userID, req.ProductID, req.ProductOptionID, req.Quantity)
 	if err != nil {
 		if errors.Is(err, service.ErrProductNotFound) {
 			log.Warn("Product not found for cart", map[string]interface{}{
@@ -115,6 +121,17 @@ func (ctrl *CartController) AddToCart(c *gin.Context) {
 			})
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "Product not found",
+			})
+			return
+		}
+		if errors.Is(err, service.ErrInvalidProductOption) {
+			log.Warn("Invalid product option for cart item", map[string]interface{}{
+				"user_id":           userID,
+				"product_id":        req.ProductID,
+				"product_option_id": req.ProductOptionID,
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid product option",
 			})
 			return
 		}
@@ -130,8 +147,9 @@ func (ctrl *CartController) AddToCart(c *gin.Context) {
 			return
 		}
 		log.Error("Failed to add item to cart", err, map[string]interface{}{
-			"user_id":    userID,
-			"product_id": req.ProductID,
+			"user_id":           userID,
+			"product_id":        req.ProductID,
+			"product_option_id": req.ProductOptionID,
 		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to add item to cart",
@@ -140,9 +158,10 @@ func (ctrl *CartController) AddToCart(c *gin.Context) {
 	}
 
 	log.Info("Item added to cart successfully", map[string]interface{}{
-		"user_id":    userID,
-		"product_id": req.ProductID,
-		"quantity":   req.Quantity,
+		"user_id":           userID,
+		"product_id":        req.ProductID,
+		"product_option_id": req.ProductOptionID,
+		"quantity":          req.Quantity,
 	})
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -186,7 +205,7 @@ func (ctrl *CartController) UpdateCartItem(c *gin.Context) {
 			"error":        err.Error(),
 		})
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
+			"error":   "Invalid request data",
 			"details": err.Error(),
 		})
 		return

@@ -10,40 +10,106 @@ import (
 )
 
 var (
-	ErrProductNotFound   = errors.New("product not found")
-	ErrInsufficientStock = errors.New("insufficient stock")
+	ErrProductNotFound      = errors.New("product not found")
+	ErrInsufficientStock    = errors.New("insufficient stock")
+	ErrInvalidProductOption = errors.New("invalid product option")
+	ErrProductAccessDenied  = errors.New("product access denied")
 )
 
+type ProductSort string
+
+const (
+	ProductSortPrice      ProductSort = "price"
+	ProductSortCreatedAt  ProductSort = "created_at"
+	ProductSortPopularity ProductSort = "popularity"
+)
+
+type ProductListOptions struct {
+	Region         string
+	District       string
+	Category       *model.ProductCategory
+	StoreID        *uint
+	Search         string
+	Sort           ProductSort
+	SortAscending  bool
+	PopularOnly    bool
+	Limit          int
+	Offset         int
+	IncludeOptions bool
+}
+
 type ProductService interface {
-	GetAllProducts() ([]model.Product, error)
+	ListProducts(opts ProductListOptions) ([]model.Product, error)
 	GetProductByID(id uint) (*model.Product, error)
 	GetProductsByCategory(category model.ProductCategory) ([]model.Product, error)
+	GetPopularProducts(category model.ProductCategory, region, district string, limit int) ([]model.Product, error)
 	CreateProduct(product *model.Product) error
-	UpdateProduct(product *model.Product) error
-	DeleteProduct(id uint) error
-	CheckStock(productID uint, quantity int) error
+	UpdateProduct(userID uint, product *model.Product) error
+	DeleteProduct(userID uint, id uint) error
+	CheckStock(productID uint, productOptionID *uint, quantity int) error
 }
 
 type productService struct {
-	productRepo repository.ProductRepository
+	productRepo       repository.ProductRepository
+	productOptionRepo repository.ProductOptionRepository
 }
 
-func NewProductService(productRepo repository.ProductRepository) ProductService {
+func NewProductService(productRepo repository.ProductRepository, productOptionRepo ...repository.ProductOptionRepository) ProductService {
+	var optionRepo repository.ProductOptionRepository
+	if len(productOptionRepo) > 0 {
+		optionRepo = productOptionRepo[0]
+	}
 	return &productService{
-		productRepo: productRepo,
+		productRepo:       productRepo,
+		productOptionRepo: optionRepo,
 	}
 }
 
-func (s *productService) GetAllProducts() ([]model.Product, error) {
-	logger.Debug("Fetching all products")
+func (s *productService) ListProducts(opts ProductListOptions) ([]model.Product, error) {
+	logger.Debug("Listing products", map[string]interface{}{
+		"region":   opts.Region,
+		"district": opts.District,
+		"category": opts.Category,
+		"search":   opts.Search,
+		"sort":     opts.Sort,
+		"limit":    opts.Limit,
+		"offset":   opts.Offset,
+	})
 
-	products, err := s.productRepo.FindAll()
+	filter := repository.ProductFilter{
+		Region:         opts.Region,
+		District:       opts.District,
+		StoreID:        opts.StoreID,
+		Search:         opts.Search,
+		SortAscending:  opts.SortAscending,
+		PopularOnly:    opts.PopularOnly,
+		Limit:          opts.Limit,
+		Offset:         opts.Offset,
+		IncludeOptions: opts.IncludeOptions,
+	}
+
+	switch opts.Sort {
+	case ProductSortPrice:
+		filter.SortBy = repository.ProductSortPrice
+	case ProductSortCreatedAt:
+		filter.SortBy = repository.ProductSortCreatedAt
+	case ProductSortPopularity:
+		fallthrough
+	default:
+		filter.SortBy = repository.ProductSortPopularity
+	}
+
+	if opts.Category != nil {
+		filter.Category = opts.Category
+	}
+
+	products, err := s.productRepo.FindWithFilter(filter)
 	if err != nil {
-		logger.Error("Failed to fetch products", err)
+		logger.Error("Failed to list products", err)
 		return nil, err
 	}
 
-	logger.Info("Products fetched successfully", map[string]interface{}{
+	logger.Info("Products listed", map[string]interface{}{
 		"count": len(products),
 	})
 	return products, nil
@@ -90,12 +156,34 @@ func (s *productService) GetProductsByCategory(category model.ProductCategory) (
 	return products, nil
 }
 
+func (s *productService) GetPopularProducts(category model.ProductCategory, region, district string, limit int) ([]model.Product, error) {
+	logger.Debug("Fetching popular products", map[string]interface{}{
+		"category": category,
+		"region":   region,
+		"district": district,
+		"limit":    limit,
+	})
+
+	products, err := s.productRepo.FindPopularByCategory(category, limit, region, district)
+	if err != nil {
+		logger.Error("Failed to fetch popular products", err, map[string]interface{}{
+			"category": category,
+		})
+		return nil, err
+	}
+
+	logger.Info("Popular products fetched", map[string]interface{}{
+		"category": category,
+		"count":    len(products),
+	})
+	return products, nil
+}
+
 func (s *productService) CreateProduct(product *model.Product) error {
 	logger.Info("Creating new product", map[string]interface{}{
 		"name":     product.Name,
 		"category": product.Category,
-		"price":    product.Price,
-		"stock":    product.StockQuantity,
+		"store_id": product.StoreID,
 	})
 
 	if err := s.productRepo.Create(product); err != nil {
@@ -113,14 +201,14 @@ func (s *productService) CreateProduct(product *model.Product) error {
 	return nil
 }
 
-func (s *productService) UpdateProduct(product *model.Product) error {
+func (s *productService) UpdateProduct(userID uint, product *model.Product) error {
 	logger.Info("Updating product", map[string]interface{}{
 		"product_id": product.ID,
 		"name":       product.Name,
+		"user_id":    userID,
 	})
 
-	// Check if product exists
-	_, err := s.productRepo.FindByID(product.ID)
+	existing, err := s.productRepo.FindByID(product.ID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			logger.Warn("Cannot update: product not found", map[string]interface{}{
@@ -133,6 +221,27 @@ func (s *productService) UpdateProduct(product *model.Product) error {
 		})
 		return err
 	}
+
+	if existing.Store.UserID != userID {
+		logger.Warn("Product update forbidden", map[string]interface{}{
+			"product_id": product.ID,
+			"user_id":    userID,
+			"store_id":   existing.StoreID,
+		})
+		return ErrProductAccessDenied
+	}
+
+	if product.StoreID != 0 && product.StoreID != existing.StoreID {
+		logger.Warn("Attempt to change product store rejected", map[string]interface{}{
+			"product_id":      product.ID,
+			"user_id":         userID,
+			"existing_store":  existing.StoreID,
+			"requested_store": product.StoreID,
+		})
+		return ErrProductAccessDenied
+	}
+
+	product.StoreID = existing.StoreID
 
 	if err := s.productRepo.Update(product); err != nil {
 		logger.Error("Failed to update product", err, map[string]interface{}{
@@ -148,13 +257,13 @@ func (s *productService) UpdateProduct(product *model.Product) error {
 	return nil
 }
 
-func (s *productService) DeleteProduct(id uint) error {
+func (s *productService) DeleteProduct(userID uint, id uint) error {
 	logger.Info("Deleting product", map[string]interface{}{
 		"product_id": id,
+		"user_id":    userID,
 	})
 
-	// Check if product exists
-	product, err := s.productRepo.FindByID(id)
+	existing, err := s.productRepo.FindByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			logger.Warn("Cannot delete: product not found", map[string]interface{}{
@@ -168,6 +277,15 @@ func (s *productService) DeleteProduct(id uint) error {
 		return err
 	}
 
+	if existing.Store.UserID != userID {
+		logger.Warn("Product delete forbidden", map[string]interface{}{
+			"product_id": id,
+			"user_id":    userID,
+			"store_id":   existing.StoreID,
+		})
+		return ErrProductAccessDenied
+	}
+
 	if err := s.productRepo.Delete(id); err != nil {
 		logger.Error("Failed to delete product", err, map[string]interface{}{
 			"product_id": id,
@@ -177,15 +295,15 @@ func (s *productService) DeleteProduct(id uint) error {
 
 	logger.Info("Product deleted successfully", map[string]interface{}{
 		"product_id": id,
-		"name":       product.Name,
 	})
 	return nil
 }
 
-func (s *productService) CheckStock(productID uint, quantity int) error {
+func (s *productService) CheckStock(productID uint, productOptionID *uint, quantity int) error {
 	logger.Debug("Checking product stock", map[string]interface{}{
-		"product_id":         productID,
-		"requested_quantity": quantity,
+		"product_id":        productID,
+		"product_option_id": productOptionID,
+		"quantity":          quantity,
 	})
 
 	product, err := s.productRepo.FindByID(productID)
@@ -203,18 +321,56 @@ func (s *productService) CheckStock(productID uint, quantity int) error {
 	}
 
 	if product.StockQuantity < quantity {
-		logger.Warn("Insufficient stock", map[string]interface{}{
-			"product_id":         productID,
-			"available_stock":    product.StockQuantity,
-			"requested_quantity": quantity,
+		logger.Warn("Insufficient product stock", map[string]interface{}{
+			"product_id":      productID,
+			"requested":       quantity,
+			"available_stock": product.StockQuantity,
 		})
 		return ErrInsufficientStock
 	}
 
-	logger.Debug("Stock check passed", map[string]interface{}{
-		"product_id":         productID,
-		"available_stock":    product.StockQuantity,
-		"requested_quantity": quantity,
+	if productOptionID != nil {
+		if s.productOptionRepo == nil {
+			logger.Warn("Product option repository unavailable for stock check", map[string]interface{}{
+				"product_id":        productID,
+				"product_option_id": *productOptionID,
+			})
+			return ErrInvalidProductOption
+		}
+		option, err := s.productOptionRepo.FindByID(*productOptionID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				logger.Warn("Product option not found for stock check", map[string]interface{}{
+					"product_option_id": *productOptionID,
+				})
+				return ErrInvalidProductOption
+			}
+			logger.Error("Failed to fetch product option", err, map[string]interface{}{
+				"product_option_id": *productOptionID,
+			})
+			return err
+		}
+
+		if option.ProductID != productID {
+			logger.Warn("Product option does not belong to product", map[string]interface{}{
+				"product_id":        productID,
+				"product_option_id": *productOptionID,
+			})
+			return ErrInvalidProductOption
+		}
+
+		if option.StockQuantity < quantity {
+			logger.Warn("Insufficient product option stock", map[string]interface{}{
+				"product_option_id": *productOptionID,
+				"requested":         quantity,
+				"available_stock":   option.StockQuantity,
+			})
+			return ErrInsufficientStock
+		}
+	}
+
+	logger.Debug("Product stock sufficient", map[string]interface{}{
+		"product_id": productID,
 	})
 	return nil
 }

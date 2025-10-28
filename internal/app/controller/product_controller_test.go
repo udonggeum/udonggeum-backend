@@ -3,9 +3,11 @@ package controller
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
@@ -17,22 +19,48 @@ import (
 )
 
 // setupProductControllerTest 수정판: repository도 반환
-func setupProductControllerTest(t *testing.T) (*ProductController, *gin.Engine, repository.ProductRepository) {
+func setupProductControllerTest(t *testing.T) (*ProductController, *gin.Engine, repository.ProductRepository, *model.User, *model.Store) {
 	testDB, err := db.SetupTestDB()
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.CleanupTestDB(testDB)
+	})
 
 	productRepo := repository.NewProductRepository(testDB)
-	productService := service.NewProductService(productRepo)
+	productOptionRepo := repository.NewProductOptionRepository(testDB)
+	productService := service.NewProductService(productRepo, productOptionRepo)
 	productController := NewProductController(productService)
+
+	owner := &model.User{
+		Email:        fmt.Sprintf("owner-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hashed-password",
+		Name:         "Store Owner",
+		Role:         model.RoleAdmin,
+	}
+	require.NoError(t, testDB.Create(owner).Error)
+
+	store := &model.Store{
+		UserID:   owner.ID,
+		Name:     "Test Store",
+		Region:   "서울특별시",
+		District: "강남구",
+		Address:  "서울시 강남구 테스트로 1",
+	}
+	require.NoError(t, testDB.Create(store).Error)
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", owner.ID)
+		c.Set("user_role", string(owner.Role))
+		c.Next()
+	})
 
-	return productController, router, productRepo
+	return productController, router, productRepo, owner, store
 }
 
 func TestProductController_GetAllProducts_Success(t *testing.T) {
-	controller, router, productRepo := setupProductControllerTest(t)
+	controller, router, productRepo, _, store := setupProductControllerTest(t)
 
 	// 테스트용 데이터 생성
 	productRepo.Create(&model.Product{
@@ -40,12 +68,14 @@ func TestProductController_GetAllProducts_Success(t *testing.T) {
 		Price:         500000,
 		Category:      model.CategoryGold,
 		StockQuantity: 5,
+		StoreID:       store.ID,
 	})
 	productRepo.Create(&model.Product{
 		Name:          "Silver Ring",
 		Price:         100000,
 		Category:      model.CategorySilver,
 		StockQuantity: 10,
+		StoreID:       store.ID,
 	})
 
 	router.GET("/products", controller.GetAllProducts)
@@ -66,7 +96,7 @@ func TestProductController_GetAllProducts_Success(t *testing.T) {
 }
 
 func TestProductController_GetAllProducts_Empty(t *testing.T) {
-	controller, router, _ := setupProductControllerTest(t)
+	controller, router, _, _, _ := setupProductControllerTest(t)
 
 	router.GET("/products", controller.GetAllProducts)
 
@@ -86,7 +116,7 @@ func TestProductController_GetAllProducts_Empty(t *testing.T) {
 }
 
 func TestProductController_GetProductByID_Success(t *testing.T) {
-	controller, router, productRepo := setupProductControllerTest(t)
+	controller, router, productRepo, _, store := setupProductControllerTest(t)
 
 	// 테스트용 데이터 생성
 	product := &model.Product{
@@ -94,6 +124,7 @@ func TestProductController_GetProductByID_Success(t *testing.T) {
 		Price:         300000,
 		Category:      model.CategoryGold,
 		StockQuantity: 3,
+		StoreID:       store.ID,
 	}
 	productRepo.Create(product)
 
@@ -115,7 +146,7 @@ func TestProductController_GetProductByID_Success(t *testing.T) {
 }
 
 func TestProductController_GetProductByID_NotFound(t *testing.T) {
-	controller, router, _ := setupProductControllerTest(t)
+	controller, router, _, _, _ := setupProductControllerTest(t)
 
 	router.GET("/products/:id", controller.GetProductByID)
 
@@ -133,7 +164,7 @@ func TestProductController_GetProductByID_NotFound(t *testing.T) {
 }
 
 func TestProductController_GetProductByID_InvalidID(t *testing.T) {
-	controller, router, _ := setupProductControllerTest(t)
+	controller, router, _, _, _ := setupProductControllerTest(t)
 
 	router.GET("/products/:id", controller.GetProductByID)
 
@@ -151,7 +182,7 @@ func TestProductController_GetProductByID_InvalidID(t *testing.T) {
 }
 
 func TestProductController_CreateProduct_Success(t *testing.T) {
-	controller, router, _ := setupProductControllerTest(t)
+	controller, router, _, _, store := setupProductControllerTest(t)
 
 	router.POST("/products", controller.CreateProduct)
 
@@ -164,6 +195,7 @@ func TestProductController_CreateProduct_Success(t *testing.T) {
 		Category:      model.CategoryGold,
 		StockQuantity: 2,
 		ImageURL:      "http://example.com/diamond.jpg",
+		StoreID:       store.ID,
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
@@ -187,7 +219,7 @@ func TestProductController_CreateProduct_Success(t *testing.T) {
 }
 
 func TestProductController_CreateProduct_InvalidRequest(t *testing.T) {
-	controller, router, _ := setupProductControllerTest(t)
+	controller, router, _, _, store := setupProductControllerTest(t)
 
 	router.POST("/products", controller.CreateProduct)
 
@@ -199,7 +231,7 @@ func TestProductController_CreateProduct_InvalidRequest(t *testing.T) {
 	}{
 		{
 			name:       "Missing name",
-			reqBody:    map[string]interface{}{"price": 100000, "category": "gold"},
+			reqBody:    map[string]interface{}{"price": 100000, "category": "gold", "store_id": store.ID},
 			wantStatus: http.StatusBadRequest,
 			wantError:  "Invalid request data",
 		},
@@ -250,13 +282,14 @@ func TestProductController_CreateProduct_InvalidRequest(t *testing.T) {
 
 // UpdateProduct, DeleteProduct 테스트도 동일하게 productRepo 직접 사용
 func TestProductController_UpdateProduct_Success(t *testing.T) {
-	controller, router, productRepo := setupProductControllerTest(t)
+	controller, router, productRepo, _, store := setupProductControllerTest(t)
 
 	product := &model.Product{
 		Name:          "Old Name",
 		Price:         100000,
 		Category:      model.CategoryGold,
 		StockQuantity: 5,
+		StoreID:       store.ID,
 	}
 	productRepo.Create(product)
 
@@ -271,6 +304,7 @@ func TestProductController_UpdateProduct_Success(t *testing.T) {
 		Category:      model.CategoryGold,
 		StockQuantity: 10,
 		ImageURL:      "http://example.com/updated.jpg",
+		StoreID:       store.ID,
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
@@ -293,13 +327,14 @@ func TestProductController_UpdateProduct_Success(t *testing.T) {
 }
 
 func TestProductController_DeleteProduct_Success(t *testing.T) {
-	controller, router, productRepo := setupProductControllerTest(t)
+	controller, router, productRepo, _, store := setupProductControllerTest(t)
 
 	product := &model.Product{
 		Name:          "To Be Deleted",
 		Price:         100000,
 		Category:      model.CategoryGold,
 		StockQuantity: 5,
+		StoreID:       store.ID,
 	}
 	productRepo.Create(product)
 

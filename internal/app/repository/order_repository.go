@@ -23,24 +23,35 @@ func NewOrderRepository(db *gorm.DB) OrderRepository {
 	return &orderRepository{db: db}
 }
 
+func (r *orderRepository) preloadOrder() *gorm.DB {
+	return r.db.Preload("OrderItems", func(db *gorm.DB) *gorm.DB {
+		return db.Preload("Product", func(pdb *gorm.DB) *gorm.DB {
+			return pdb.Preload("Store")
+		}).Preload("ProductOption").Preload("Store")
+	}).Preload("User").Preload("PickupStore")
+}
+
 func (r *orderRepository) Create(order *model.Order) error {
 	logger.Debug("Creating order in database", map[string]interface{}{
-		"user_id":     order.UserID,
-		"total_price": order.TotalPrice,
+		"user_id":          order.UserID,
+		"total_amount":     order.TotalAmount,
+		"fulfillment_type": order.FulfillmentType,
 	})
 
 	if err := r.db.Create(order).Error; err != nil {
 		logger.Error("Failed to create order in database", err, map[string]interface{}{
-			"user_id":     order.UserID,
-			"total_price": order.TotalPrice,
+			"user_id":          order.UserID,
+			"total_amount":     order.TotalAmount,
+			"fulfillment_type": order.FulfillmentType,
 		})
 		return err
 	}
 
 	logger.Debug("Order created in database", map[string]interface{}{
-		"order_id":    order.ID,
-		"user_id":     order.UserID,
-		"total_price": order.TotalPrice,
+		"order_id":         order.ID,
+		"user_id":          order.UserID,
+		"total_amount":     order.TotalAmount,
+		"fulfillment_type": order.FulfillmentType,
 	})
 	return nil
 }
@@ -51,8 +62,7 @@ func (r *orderRepository) FindByID(id uint) (*model.Order, error) {
 	})
 
 	var order model.Order
-	err := r.db.Preload("OrderItems.Product").Preload("User").First(&order, id).Error
-	if err != nil {
+	if err := r.preloadOrder().First(&order, id).Error; err != nil {
 		logger.Error("Failed to find order by ID in database", err, map[string]interface{}{
 			"order_id": id,
 		})
@@ -73,11 +83,9 @@ func (r *orderRepository) FindByUserID(userID uint) ([]model.Order, error) {
 	})
 
 	var orders []model.Order
-	err := r.db.Where("user_id = ?", userID).
-		Preload("OrderItems.Product").
+	if err := r.preloadOrder().Where("user_id = ?", userID).
 		Order("created_at DESC").
-		Find(&orders).Error
-	if err != nil {
+		Find(&orders).Error; err != nil {
 		logger.Error("Failed to find orders by user ID in database", err, map[string]interface{}{
 			"user_id": userID,
 		})

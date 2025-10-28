@@ -11,14 +11,18 @@ import (
 	"gorm.io/gorm"
 )
 
-func setupOrderServiceTest(t *testing.T) (OrderService, *gorm.DB, *model.User, *model.Product) {
+func setupOrderServiceTest(t *testing.T) (OrderService, *gorm.DB, *model.User, *model.Product, *model.Store) {
 	testDB, err := db.SetupTestDB()
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.CleanupTestDB(testDB)
+	})
 
 	orderRepo := repository.NewOrderRepository(testDB)
 	cartRepo := repository.NewCartRepository(testDB)
 	productRepo := repository.NewProductRepository(testDB)
-	orderService := NewOrderService(orderRepo, cartRepo, productRepo, testDB)
+	productOptionRepo := repository.NewProductOptionRepository(testDB)
+	orderService := NewOrderService(orderRepo, cartRepo, productRepo, testDB, productOptionRepo)
 
 	user := &model.User{
 		Email:        "test@example.com",
@@ -28,19 +32,29 @@ func setupOrderServiceTest(t *testing.T) (OrderService, *gorm.DB, *model.User, *
 	}
 	testDB.Create(user)
 
+	store := &model.Store{
+		UserID:   user.ID,
+		Name:     "테스트 매장",
+		Region:   "서울특별시",
+		District: "강남구",
+		Address:  "서울시 강남구 테스트로 1",
+	}
+	testDB.Create(store)
+
 	product := &model.Product{
 		Name:          "Test Product",
 		Price:         100000,
 		Category:      model.CategoryGold,
 		StockQuantity: 10,
+		StoreID:       store.ID,
 	}
 	testDB.Create(product)
 
-	return orderService, testDB, user, product
+	return orderService, testDB, user, product, store
 }
 
 func TestOrderService_CreateOrderFromCart_Success(t *testing.T) {
-	orderService, testDB, user, product := setupOrderServiceTest(t)
+	orderService, testDB, user, product, _ := setupOrderServiceTest(t)
 
 	// Add items to cart
 	cartRepo := repository.NewCartRepository(testDB)
@@ -51,7 +65,7 @@ func TestOrderService_CreateOrderFromCart_Success(t *testing.T) {
 	})
 
 	// Create order
-	order, err := orderService.CreateOrderFromCart(user.ID, "서울시 강남구 테헤란로 123")
+	order, err := orderService.CreateOrderFromCart(user.ID, "서울시 강남구 테헤란로 123", model.FulfillmentDelivery, nil)
 	require.NoError(t, err)
 	assert.NotZero(t, order.ID)
 	assert.Equal(t, user.ID, order.UserID)
@@ -71,15 +85,15 @@ func TestOrderService_CreateOrderFromCart_Success(t *testing.T) {
 }
 
 func TestOrderService_CreateOrderFromCart_EmptyCart(t *testing.T) {
-	orderService, _, user, _ := setupOrderServiceTest(t)
+	orderService, _, user, _, _ := setupOrderServiceTest(t)
 
-	order, err := orderService.CreateOrderFromCart(user.ID, "서울시 강남구")
+	order, err := orderService.CreateOrderFromCart(user.ID, "서울시 강남구", model.FulfillmentDelivery, nil)
 	assert.ErrorIs(t, err, ErrEmptyCart)
 	assert.Nil(t, order)
 }
 
 func TestOrderService_CreateOrderFromCart_InsufficientStock(t *testing.T) {
-	orderService, testDB, user, product := setupOrderServiceTest(t)
+	orderService, testDB, user, product, _ := setupOrderServiceTest(t)
 
 	// Add item with quantity exceeding stock
 	cartRepo := repository.NewCartRepository(testDB)
@@ -89,7 +103,7 @@ func TestOrderService_CreateOrderFromCart_InsufficientStock(t *testing.T) {
 		Quantity:  100,
 	})
 
-	order, err := orderService.CreateOrderFromCart(user.ID, "서울시 강남구")
+	order, err := orderService.CreateOrderFromCart(user.ID, "서울시 강남구", model.FulfillmentDelivery, nil)
 	assert.ErrorIs(t, err, ErrInsufficientStock)
 	assert.Nil(t, order)
 
@@ -104,7 +118,7 @@ func TestOrderService_CreateOrderFromCart_InsufficientStock(t *testing.T) {
 }
 
 func TestOrderService_GetUserOrders(t *testing.T) {
-	orderService, testDB, user, _ := setupOrderServiceTest(t)
+	orderService, testDB, user, _, _ := setupOrderServiceTest(t)
 
 	// Create multiple orders
 	orderRepo := repository.NewOrderRepository(testDB)
@@ -125,7 +139,7 @@ func TestOrderService_GetUserOrders(t *testing.T) {
 }
 
 func TestOrderService_GetOrderByID_Success(t *testing.T) {
-	orderService, testDB, user, _ := setupOrderServiceTest(t)
+	orderService, testDB, user, _, _ := setupOrderServiceTest(t)
 
 	// Create order
 	orderRepo := repository.NewOrderRepository(testDB)
@@ -145,7 +159,7 @@ func TestOrderService_GetOrderByID_Success(t *testing.T) {
 }
 
 func TestOrderService_GetOrderByID_NotFound(t *testing.T) {
-	orderService, _, user, _ := setupOrderServiceTest(t)
+	orderService, _, user, _, _ := setupOrderServiceTest(t)
 
 	order, err := orderService.GetOrderByID(user.ID, 9999)
 	assert.ErrorIs(t, err, ErrOrderNotFound)
@@ -153,7 +167,7 @@ func TestOrderService_GetOrderByID_NotFound(t *testing.T) {
 }
 
 func TestOrderService_GetOrderByID_WrongUser(t *testing.T) {
-	orderService, testDB, user, _ := setupOrderServiceTest(t)
+	orderService, testDB, user, _, _ := setupOrderServiceTest(t)
 
 	// Create order
 	orderRepo := repository.NewOrderRepository(testDB)
@@ -173,7 +187,7 @@ func TestOrderService_GetOrderByID_WrongUser(t *testing.T) {
 }
 
 func TestOrderService_UpdateOrderStatus(t *testing.T) {
-	orderService, testDB, user, _ := setupOrderServiceTest(t)
+	orderService, testDB, user, _, _ := setupOrderServiceTest(t)
 
 	orderRepo := repository.NewOrderRepository(testDB)
 	order := &model.Order{
@@ -194,7 +208,7 @@ func TestOrderService_UpdateOrderStatus(t *testing.T) {
 }
 
 func TestOrderService_UpdatePaymentStatus(t *testing.T) {
-	orderService, testDB, user, _ := setupOrderServiceTest(t)
+	orderService, testDB, user, _, _ := setupOrderServiceTest(t)
 
 	orderRepo := repository.NewOrderRepository(testDB)
 	order := &model.Order{
@@ -215,7 +229,7 @@ func TestOrderService_UpdatePaymentStatus(t *testing.T) {
 }
 
 func TestOrderService_CreateOrder_WithMultipleItems(t *testing.T) {
-	orderService, testDB, user, product := setupOrderServiceTest(t)
+	orderService, testDB, user, product, store := setupOrderServiceTest(t)
 
 	// Create another product
 	product2 := &model.Product{
@@ -223,6 +237,7 @@ func TestOrderService_CreateOrder_WithMultipleItems(t *testing.T) {
 		Price:         50000,
 		Category:      model.CategorySilver,
 		StockQuantity: 20,
+		StoreID:       store.ID,
 	}
 	testDB.Create(product2)
 
@@ -232,7 +247,7 @@ func TestOrderService_CreateOrder_WithMultipleItems(t *testing.T) {
 	cartRepo.Create(&model.CartItem{UserID: user.ID, ProductID: product2.ID, Quantity: 3})
 
 	// Create order
-	order, err := orderService.CreateOrderFromCart(user.ID, "서울시 강남구")
+	order, err := orderService.CreateOrderFromCart(user.ID, "서울시 강남구", model.FulfillmentDelivery, nil)
 	require.NoError(t, err)
 	assert.Equal(t, float64(350000), order.TotalAmount) // (100000*2) + (50000*3)
 	assert.Len(t, order.OrderItems, 2)

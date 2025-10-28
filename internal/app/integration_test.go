@@ -36,6 +36,7 @@ func setupIntegrationTest(t *testing.T) *TestServer {
 	// Setup repositories
 	userRepo := repository.NewUserRepository(testDB)
 	productRepo := repository.NewProductRepository(testDB)
+	productOptionRepo := repository.NewProductOptionRepository(testDB)
 	orderRepo := repository.NewOrderRepository(testDB)
 	cartRepo := repository.NewCartRepository(testDB)
 
@@ -46,9 +47,9 @@ func setupIntegrationTest(t *testing.T) *TestServer {
 		15*time.Minute,
 		7*24*time.Hour,
 	)
-	productService := service.NewProductService(productRepo)
-	cartService := service.NewCartService(cartRepo, productRepo)
-	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, testDB)
+	productService := service.NewProductService(productRepo, productOptionRepo)
+	cartService := service.NewCartService(cartRepo, productRepo, productOptionRepo)
+	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, testDB, productOptionRepo)
 
 	// Setup controllers
 	authController := controller.NewAuthController(authService)
@@ -132,7 +133,7 @@ func TestCompleteUserJourney(t *testing.T) {
 
 	// 2. Create products as admin
 	t.Log("Step 2: Create products")
-	// Register admin user
+	// Register admin user (direct insert for test convenience)
 	adminUser := &model.User{
 		Email:        "admin@example.com",
 		PasswordHash: "hash",
@@ -141,14 +142,16 @@ func TestCompleteUserJourney(t *testing.T) {
 	}
 	ts.DB.Create(adminUser)
 
-	_, adminTokens, err := service.NewAuthService(
-		repository.NewUserRepository(ts.DB),
-		"test-secret",
-		15*time.Minute,
-		7*24*time.Hour,
-	).Login("admin@example.com", "hash") // This will fail, so we create product directly
+	// Create store and product directly in DB
+	store := &model.Store{
+		UserID:   adminUser.ID,
+		Name:     "강남 본점",
+		Region:   "서울특별시",
+		District: "강남구",
+		Address:  "서울시 강남구 테헤란로 1",
+	}
+	ts.DB.Create(store)
 
-	// Create product directly in DB
 	product := &model.Product{
 		Name:          "24K Gold Bar 100g",
 		Description:   "Pure gold bar",
@@ -158,6 +161,7 @@ func TestCompleteUserJourney(t *testing.T) {
 		Category:      model.CategoryGold,
 		StockQuantity: 10,
 		ImageURL:      "https://example.com/gold.jpg",
+		StoreID:       store.ID,
 	}
 	ts.DB.Create(product)
 
@@ -261,8 +265,6 @@ func TestCompleteUserJourney(t *testing.T) {
 	ts.DB.First(&updatedProduct, product.ID)
 	assert.Equal(t, 8, updatedProduct.StockQuantity) // 10 - 2 = 8
 
-	_ = adminTokens
-	_ = err
 }
 
 func TestAuthenticationFlow(t *testing.T) {

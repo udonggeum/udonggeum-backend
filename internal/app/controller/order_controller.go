@@ -22,7 +22,9 @@ func NewOrderController(orderService service.OrderService) *OrderController {
 }
 
 type CreateOrderRequest struct {
-	ShippingAddress string `json:"shipping_address" binding:"required"`
+	ShippingAddress string                `json:"shipping_address"`
+	FulfillmentType model.FulfillmentType `json:"fulfillment_type"`
+	PickupStoreID   *uint                 `json:"pickup_store_id"`
 }
 
 type UpdateOrderStatusRequest struct {
@@ -150,19 +152,22 @@ func (ctrl *OrderController) CreateOrder(c *gin.Context) {
 			"error":   err.Error(),
 		})
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
+			"error":   "Invalid request data",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	log.Debug("Creating order from cart", map[string]interface{}{
-		"user_id": userID,
+		"user_id":          userID,
+		"fulfillment_type": req.FulfillmentType,
+		"pickup_store_id":  req.PickupStoreID,
 	})
 
-	order, err := ctrl.orderService.CreateOrderFromCart(userID, req.ShippingAddress)
+	order, err := ctrl.orderService.CreateOrderFromCart(userID, req.ShippingAddress, req.FulfillmentType, req.PickupStoreID)
 	if err != nil {
-		if errors.Is(err, service.ErrEmptyCart) {
+		switch {
+		case errors.Is(err, service.ErrEmptyCart):
 			log.Warn("Order creation failed: empty cart", map[string]interface{}{
 				"user_id": userID,
 			})
@@ -170,8 +175,7 @@ func (ctrl *OrderController) CreateOrder(c *gin.Context) {
 				"error": "Cart is empty",
 			})
 			return
-		}
-		if errors.Is(err, service.ErrInsufficientStock) {
+		case errors.Is(err, service.ErrInsufficientStock):
 			log.Warn("Order creation failed: insufficient stock", map[string]interface{}{
 				"user_id": userID,
 			})
@@ -179,15 +183,47 @@ func (ctrl *OrderController) CreateOrder(c *gin.Context) {
 				"error": "Insufficient stock for one or more items",
 			})
 			return
+		case errors.Is(err, service.ErrInvalidFulfillment):
+			log.Warn("Order creation failed: invalid fulfillment", map[string]interface{}{
+				"user_id":          userID,
+				"fulfillment_type": req.FulfillmentType,
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid fulfillment selection",
+			})
+			return
+		case errors.Is(err, service.ErrInvalidProductOption):
+			log.Warn("Order creation failed: invalid product option", map[string]interface{}{
+				"user_id": userID,
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid product option in cart",
+			})
+			return
+		case errors.Is(err, service.ErrProductNotFound):
+			log.Warn("Order creation failed: product not found", map[string]interface{}{
+				"user_id": userID,
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "One or more products are unavailable",
+			})
+			return
+		default:
+			log.Error("Failed to create order", err, map[string]interface{}{
+				"user_id": userID,
+			})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to create order",
+			})
+			return
 		}
-		log.Error("Failed to create order", err, map[string]interface{}{
-			"user_id": userID,
-		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to create order",
-		})
-		return
 	}
+
+	log.Info("Order created successfully", map[string]interface{}{
+		"user_id":      userID,
+		"order_id":     order.ID,
+		"total_amount": order.TotalAmount,
+	})
 
 	log.Info("Order created successfully", map[string]interface{}{
 		"user_id":      userID,
@@ -226,7 +262,7 @@ func (ctrl *OrderController) UpdateOrderStatus(c *gin.Context) {
 			"error":    err.Error(),
 		})
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
+			"error":   "Invalid request data",
 			"details": err.Error(),
 		})
 		return
@@ -284,7 +320,7 @@ func (ctrl *OrderController) UpdatePaymentStatus(c *gin.Context) {
 			"error":    err.Error(),
 		})
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
+			"error":   "Invalid request data",
 			"details": err.Error(),
 		})
 		return

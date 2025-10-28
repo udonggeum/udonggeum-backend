@@ -17,20 +17,18 @@ import (
 )
 
 func main() {
-	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Fatal("Failed to load configuration", err)
 	}
 
-	// Initialize logger
 	logLevel := "info"
 	if cfg.Server.Environment == "development" {
 		logLevel = "debug"
 	}
 	logger.Initialize(logger.Config{
 		Level:       logLevel,
-		Format:      "console", // Use "json" for production
+		Format:      "console",
 		EnableColor: true,
 	})
 
@@ -40,7 +38,6 @@ func main() {
 		"log_level":   logLevel,
 	})
 
-	// Initialize database
 	if err := db.Initialize(&cfg.Database); err != nil {
 		logger.Fatal("Failed to initialize database", err)
 	}
@@ -50,47 +47,47 @@ func main() {
 		}
 	}()
 
-	// Run migrations
 	if err := db.Migrate(); err != nil {
 		logger.Fatal("Failed to run migrations", err)
 	}
 
-	// Seed database (optional)
 	if err := db.Seed(); err != nil {
 		logger.Warn("Failed to seed database", map[string]interface{}{
 			"error": err.Error(),
 		})
 	}
 
-	// Initialize repositories
-	userRepo := repository.NewUserRepository(db.GetDB())
-	productRepo := repository.NewProductRepository(db.GetDB())
-	orderRepo := repository.NewOrderRepository(db.GetDB())
-	cartRepo := repository.NewCartRepository(db.GetDB())
+	dbConn := db.GetDB()
 
-	// Initialize services
+	userRepo := repository.NewUserRepository(dbConn)
+	storeRepo := repository.NewStoreRepository(dbConn)
+	productRepo := repository.NewProductRepository(dbConn)
+	productOptionRepo := repository.NewProductOptionRepository(dbConn)
+	orderRepo := repository.NewOrderRepository(dbConn)
+	cartRepo := repository.NewCartRepository(dbConn)
+
 	authService := service.NewAuthService(
 		userRepo,
 		cfg.JWT.Secret,
 		cfg.JWT.AccessTokenExpiry,
 		cfg.JWT.RefreshTokenExpiry,
 	)
-	productService := service.NewProductService(productRepo)
-	cartService := service.NewCartService(cartRepo, productRepo)
-	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, db.GetDB())
+	storeService := service.NewStoreService(storeRepo)
+	productService := service.NewProductService(productRepo, productOptionRepo)
+	cartService := service.NewCartService(cartRepo, productRepo, productOptionRepo)
+	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, dbConn, productOptionRepo)
 
-	// Initialize controllers
 	authController := controller.NewAuthController(authService)
+	storeController := controller.NewStoreController(storeService)
 	productController := controller.NewProductController(productService)
 	cartController := controller.NewCartController(cartService)
 	orderController := controller.NewOrderController(orderService)
 
-	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
-	// Setup router
 	r := router.NewRouter(
 		authController,
+		storeController,
 		productController,
 		cartController,
 		orderController,
@@ -99,7 +96,6 @@ func main() {
 	)
 	engine := r.Setup()
 
-	// Start server in a goroutine
 	go func() {
 		addr := fmt.Sprintf(":%s", cfg.Server.Port)
 		logger.Info("Server started successfully", map[string]interface{}{
@@ -111,7 +107,6 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
