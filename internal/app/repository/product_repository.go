@@ -20,6 +20,7 @@ type ProductFilter struct {
 	Region         string
 	District       string
 	Category       *model.ProductCategory
+	Material       *model.ProductMaterial
 	StoreID        *uint
 	Search         string
 	SortBy         ProductSort
@@ -30,6 +31,11 @@ type ProductFilter struct {
 	IncludeOptions bool
 }
 
+type ProductAttributes struct {
+	Categories []model.ProductCategory
+	Materials  []model.ProductMaterial
+}
+
 type ProductRepository interface {
 	Create(product *model.Product) error
 	FindAll() ([]model.Product, error)
@@ -37,6 +43,7 @@ type ProductRepository interface {
 	FindByID(id uint) (*model.Product, error)
 	FindByCategory(category model.ProductCategory) ([]model.Product, error)
 	FindPopularByCategory(category model.ProductCategory, limit int, region, district string) ([]model.Product, error)
+	ListAttributes() (ProductAttributes, error)
 	Update(product *model.Product) error
 	Delete(id uint) error
 	UpdateStock(id uint, quantity int) error
@@ -54,6 +61,7 @@ func (r *productRepository) Create(product *model.Product) error {
 	logger.Debug("Creating product in database", map[string]interface{}{
 		"name":     product.Name,
 		"category": product.Category,
+		"material": product.Material,
 		"store_id": product.StoreID,
 	})
 
@@ -61,6 +69,7 @@ func (r *productRepository) Create(product *model.Product) error {
 		logger.Error("Failed to create product in database", err, map[string]interface{}{
 			"name":     product.Name,
 			"category": product.Category,
+			"material": product.Material,
 			"store_id": product.StoreID,
 		})
 		return err
@@ -92,6 +101,7 @@ func (r *productRepository) FindWithFilter(filter ProductFilter) ([]model.Produc
 		"region":    filter.Region,
 		"district":  filter.District,
 		"category":  filter.Category,
+		"material":  filter.Material,
 		"store_id":  filter.StoreID,
 		"search":    filter.Search,
 		"sort_by":   filter.SortBy,
@@ -115,6 +125,10 @@ func (r *productRepository) FindWithFilter(filter ProductFilter) ([]model.Produc
 
 	if filter.Category != nil {
 		query = query.Where("products.category = ?", *filter.Category)
+	}
+
+	if filter.Material != nil {
+		query = query.Where("products.material = ?", *filter.Material)
 	}
 
 	if filter.StoreID != nil {
@@ -218,6 +232,46 @@ func (r *productRepository) FindByCategory(category model.ProductCategory) ([]mo
 	return products, nil
 }
 
+func (r *productRepository) ListAttributes() (ProductAttributes, error) {
+	logger.Debug("Listing product attributes", nil)
+
+	result := ProductAttributes{}
+
+	var categoryValues []string
+	if err := r.db.Model(&model.Product{}).
+		Where("category IS NOT NULL AND category <> ''").
+		Distinct().
+		Order("category ASC").
+		Pluck("category", &categoryValues).Error; err != nil {
+		logger.Error("Failed to fetch distinct categories", err, nil)
+		return result, err
+	}
+
+	for _, category := range categoryValues {
+		result.Categories = append(result.Categories, model.ProductCategory(category))
+	}
+
+	var materialValues []string
+	if err := r.db.Model(&model.Product{}).
+		Where("material IS NOT NULL AND material <> ''").
+		Distinct().
+		Order("material ASC").
+		Pluck("material", &materialValues).Error; err != nil {
+		logger.Error("Failed to fetch distinct materials", err, nil)
+		return result, err
+	}
+
+	for _, material := range materialValues {
+		result.Materials = append(result.Materials, model.ProductMaterial(material))
+	}
+
+	logger.Debug("Product attributes listed", map[string]interface{}{
+		"category_count": len(result.Categories),
+		"material_count": len(result.Materials),
+	})
+	return result, nil
+}
+
 func (r *productRepository) FindPopularByCategory(category model.ProductCategory, limit int, region, district string) ([]model.Product, error) {
 	criteria := ProductFilter{
 		Category:    &category,
@@ -234,12 +288,16 @@ func (r *productRepository) Update(product *model.Product) error {
 	logger.Debug("Updating product in database", map[string]interface{}{
 		"product_id": product.ID,
 		"name":       product.Name,
+		"category":   product.Category,
+		"material":   product.Material,
 	})
 
 	if err := r.db.Save(product).Error; err != nil {
 		logger.Error("Failed to update product in database", err, map[string]interface{}{
 			"product_id": product.ID,
 			"name":       product.Name,
+			"category":   product.Category,
+			"material":   product.Material,
 		})
 		return err
 	}

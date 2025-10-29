@@ -108,14 +108,15 @@
       },
       "products": [
         {
-          "id": 10,
-          "name": "24K 순금 반지",
-          "price": 950000,
-          "stock_quantity": 12,
-          "category": "gold"
-        }
-      ]
+      "id": 10,
+      "name": "24K 순금 반지",
+      "price": 950000,
+      "stock_quantity": 12,
+      "category": "반지",
+      "material": "금"
     }
+  ]
+}
   ]
 }
 ```
@@ -198,7 +199,8 @@
 
 쿼리 파라미터:
 - `region`, `district` *(string)* : 매장 위치 필터
-- `category` *(enum: gold|silver|jewelry)*
+- `category` *(enum: 반지|팔찌|목걸이|귀걸이|기타)*
+- `material` *(enum: 금|은|기타)*
 - `store_id` *(number)*
 - `search` *(string)* : 이름/설명 검색
 - `sort` *(string)* : `popularity`(default) / `price_asc` / `price_desc` / `latest`
@@ -217,7 +219,8 @@
       "id": 1,
       "name": "24K 순금 반지",
       "price": 950000,
-      "category": "gold",
+      "category": "반지",
+      "material": "금",
       "stock_quantity": 12,
       "popularity_score": 92,
       "store": {
@@ -232,8 +235,19 @@
 }
 ```
 
+### 상품 필터 조회
+`GET /api/v1/products/filters`
+
+응답:
+```json
+{
+  "categories": ["반지", "팔찌", "목걸이", "귀걸이", "기타"],
+  "materials": ["금", "은", "기타"]
+}
+```
+
 ### 인기 상품
-`GET /api/v1/products/popular?category=gold&region=서울특별시&district=강동구&limit=4`
+`GET /api/v1/products/popular?category=반지&region=서울특별시&district=강동구&limit=4`
 
 ### 상품 상세
 `GET /api/v1/products/:id`
@@ -248,7 +262,8 @@
 | --- | --- | --- | --- |
 | `name` | string | Y | |
 | `price` | number | Y | 0보다 커야 함 |
-| `category` | string | Y | `gold`, `silver`, `jewelry` |
+| `category` | string | Y | `반지`, `팔찌`, `목걸이`, `귀걸이`, `기타` |
+| `material` | string | Y | `금`, `은`, `기타` |
 | `store_id` | number | Y* | 상품을 보유한 매장 (생성 시 필수) |
 | `stock_quantity` | number | N | 기본값 0 |
 | `description`, `weight`, `purity`, `image_url`, `popularity_score` | optional |

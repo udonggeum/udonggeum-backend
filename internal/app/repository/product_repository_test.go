@@ -28,7 +28,8 @@ func TestProductRepository_Create(t *testing.T) {
 		Price:         8500000,
 		Weight:        100,
 		Purity:        "24K",
-		Category:      model.CategoryGold,
+		Category:      model.CategoryOther,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 		ImageURL:      "https://example.com/gold.jpg",
 	}
@@ -45,15 +46,17 @@ func TestProductRepository_FindAll(t *testing.T) {
 	// Create test products
 	products := []model.Product{
 		{
-			Name:          "Gold Bar",
+			Name:          "Gold Ring",
 			Price:         1000000,
-			Category:      model.CategoryGold,
+			Category:      model.CategoryRing,
+			Material:      model.MaterialGold,
 			StockQuantity: 10,
 		},
 		{
-			Name:          "Silver Ring",
+			Name:          "Silver Bracelet",
 			Price:         100000,
-			Category:      model.CategorySilver,
+			Category:      model.CategoryBracelet,
+			Material:      model.MaterialSilver,
 			StockQuantity: 20,
 		},
 	}
@@ -74,9 +77,10 @@ func TestProductRepository_FindByID(t *testing.T) {
 	defer db.CleanupTestDB(testDB)
 
 	product := &model.Product{
-		Name:          "Gold Bar",
+		Name:          "Gold Necklace",
 		Price:         1000000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 	}
 	err := repo.Create(product)
@@ -120,35 +124,37 @@ func TestProductRepository_FindByCategory(t *testing.T) {
 	defer db.CleanupTestDB(testDB)
 
 	// Create products with different categories
-	goldProduct := &model.Product{
-		Name:          "Gold Bar",
+	ringProduct := &model.Product{
+		Name:          "Gold Ring",
 		Price:         1000000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 	}
-	silverProduct := &model.Product{
-		Name:          "Silver Ring",
+	earringProduct := &model.Product{
+		Name:          "Silver Earring",
 		Price:         100000,
-		Category:      model.CategorySilver,
+		Category:      model.CategoryEarring,
+		Material:      model.MaterialSilver,
 		StockQuantity: 20,
 	}
 
-	err := repo.Create(goldProduct)
+	err := repo.Create(ringProduct)
 	require.NoError(t, err)
-	err = repo.Create(silverProduct)
+	err = repo.Create(earringProduct)
 	require.NoError(t, err)
 
-	// Find by gold category
-	goldProducts, err := repo.FindByCategory(model.CategoryGold)
+	// Find by ring category
+	ringProducts, err := repo.FindByCategory(model.CategoryRing)
 	assert.NoError(t, err)
-	assert.Len(t, goldProducts, 1)
-	assert.Equal(t, "Gold Bar", goldProducts[0].Name)
+	assert.Len(t, ringProducts, 1)
+	assert.Equal(t, "Gold Ring", ringProducts[0].Name)
 
-	// Find by silver category
-	silverProducts, err := repo.FindByCategory(model.CategorySilver)
+	// Find by earring category
+	earringProducts, err := repo.FindByCategory(model.CategoryEarring)
 	assert.NoError(t, err)
-	assert.Len(t, silverProducts, 1)
-	assert.Equal(t, "Silver Ring", silverProducts[0].Name)
+	assert.Len(t, earringProducts, 1)
+	assert.Equal(t, "Silver Earring", earringProducts[0].Name)
 }
 
 func TestProductRepository_Update(t *testing.T) {
@@ -156,9 +162,10 @@ func TestProductRepository_Update(t *testing.T) {
 	defer db.CleanupTestDB(testDB)
 
 	product := &model.Product{
-		Name:          "Gold Bar",
+		Name:          "Gold Bracelet",
 		Price:         1000000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryBracelet,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 	}
 	err := repo.Create(product)
@@ -183,9 +190,10 @@ func TestProductRepository_UpdateStock(t *testing.T) {
 	defer db.CleanupTestDB(testDB)
 
 	product := &model.Product{
-		Name:          "Gold Bar",
+		Name:          "Gold Pendant",
 		Price:         1000000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 	}
 	err := repo.Create(product)
@@ -214,9 +222,10 @@ func TestProductRepository_Delete(t *testing.T) {
 	defer db.CleanupTestDB(testDB)
 
 	product := &model.Product{
-		Name:          "Gold Bar",
+		Name:          "Gold Ring",
 		Price:         1000000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 	}
 	err := repo.Create(product)
@@ -229,4 +238,41 @@ func TestProductRepository_Delete(t *testing.T) {
 	// Verify deletion (soft delete)
 	_, err = repo.FindByID(product.ID)
 	assert.Error(t, err)
+}
+
+func TestProductRepository_ListAttributes(t *testing.T) {
+	testDB, repo := setupProductTest(t)
+	defer db.CleanupTestDB(testDB)
+
+	products := []model.Product{
+		{
+			Name:          "Gold Ring",
+			Price:         200000,
+			Category:      model.CategoryRing,
+			Material:      model.MaterialGold,
+			StockQuantity: 5,
+		},
+		{
+			Name:          "Silver Bracelet",
+			Price:         150000,
+			Category:      model.CategoryBracelet,
+			Material:      model.MaterialSilver,
+			StockQuantity: 8,
+		},
+	}
+
+	for i := range products {
+		require.NoError(t, repo.Create(&products[i]))
+	}
+
+	attrs, err := repo.ListAttributes()
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, []model.ProductCategory{
+		model.CategoryRing,
+		model.CategoryBracelet,
+	}, attrs.Categories)
+	assert.ElementsMatch(t, []model.ProductMaterial{
+		model.MaterialGold,
+		model.MaterialSilver,
+	}, attrs.Materials)
 }

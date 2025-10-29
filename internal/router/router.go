@@ -87,6 +87,7 @@ func (r *Router) Setup() *gin.Engine {
 		products := v1.Group("/products")
 		{
 			products.GET("", r.productController.GetAllProducts)
+			products.GET("/filters", r.productController.GetProductFilters)
 			products.GET("/popular", r.productController.GetPopularProducts)
 			products.GET("/:id", r.productController.GetProductByID)
 

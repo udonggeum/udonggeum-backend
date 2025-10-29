@@ -66,14 +66,16 @@ func TestProductController_GetAllProducts_Success(t *testing.T) {
 	productRepo.Create(&model.Product{
 		Name:          "Gold Necklace",
 		Price:         500000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialGold,
 		StockQuantity: 5,
 		StoreID:       store.ID,
 	})
 	productRepo.Create(&model.Product{
 		Name:          "Silver Ring",
 		Price:         100000,
-		Category:      model.CategorySilver,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialSilver,
 		StockQuantity: 10,
 		StoreID:       store.ID,
 	})
@@ -93,6 +95,61 @@ func TestProductController_GetAllProducts_Success(t *testing.T) {
 	products := response["products"].([]interface{})
 	assert.Len(t, products, 2)
 	assert.Equal(t, float64(2), response["count"])
+}
+
+func TestProductController_GetProductFilters(t *testing.T) {
+	controller, router, productRepo, _, store := setupProductControllerTest(t)
+
+	productRepo.Create(&model.Product{
+		Name:          "Gold Ring",
+		Price:         300000,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
+		StockQuantity: 4,
+		StoreID:       store.ID,
+	})
+	productRepo.Create(&model.Product{
+		Name:          "Silver Bracelet",
+		Price:         150000,
+		Category:      model.CategoryBracelet,
+		Material:      model.MaterialSilver,
+		StockQuantity: 7,
+		StoreID:       store.ID,
+	})
+
+	router.GET("/products/filters", controller.GetProductFilters)
+
+	req := httptest.NewRequest(http.MethodGet, "/products/filters", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	categories := response["categories"].([]interface{})
+	categoryValues := make([]string, 0, len(categories))
+	for _, c := range categories {
+		categoryValues = append(categoryValues, c.(string))
+	}
+
+	materials := response["materials"].([]interface{})
+	materialValues := make([]string, 0, len(materials))
+	for _, m := range materials {
+		materialValues = append(materialValues, m.(string))
+	}
+
+	assert.ElementsMatch(t, []string{
+		string(model.CategoryRing),
+		string(model.CategoryBracelet),
+	}, categoryValues)
+
+	assert.ElementsMatch(t, []string{
+		string(model.MaterialGold),
+		string(model.MaterialSilver),
+	}, materialValues)
 }
 
 func TestProductController_GetAllProducts_Empty(t *testing.T) {
@@ -122,7 +179,8 @@ func TestProductController_GetProductByID_Success(t *testing.T) {
 	product := &model.Product{
 		Name:          "Gold Ring",
 		Price:         300000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
 		StockQuantity: 3,
 		StoreID:       store.ID,
 	}
@@ -192,7 +250,8 @@ func TestProductController_CreateProduct_Success(t *testing.T) {
 		Price:         1000000,
 		Weight:        5.5,
 		Purity:        "24K",
-		Category:      model.CategoryGold,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
 		StockQuantity: 2,
 		ImageURL:      "http://example.com/diamond.jpg",
 		StoreID:       store.ID,
@@ -215,7 +274,8 @@ func TestProductController_CreateProduct_Success(t *testing.T) {
 	productData := response["product"].(map[string]interface{})
 	assert.Equal(t, "Diamond Ring", productData["name"])
 	assert.Equal(t, float64(1000000), productData["price"])
-	assert.Equal(t, "gold", productData["category"])
+	assert.Equal(t, string(model.CategoryRing), productData["category"])
+	assert.Equal(t, string(model.MaterialGold), productData["material"])
 }
 
 func TestProductController_CreateProduct_InvalidRequest(t *testing.T) {
@@ -231,33 +291,57 @@ func TestProductController_CreateProduct_InvalidRequest(t *testing.T) {
 	}{
 		{
 			name:       "Missing name",
-			reqBody:    map[string]interface{}{"price": 100000, "category": "gold", "store_id": store.ID},
+			reqBody:    map[string]interface{}{"price": 100000, "category": string(model.CategoryRing), "material": string(model.MaterialGold), "store_id": store.ID},
 			wantStatus: http.StatusBadRequest,
 			wantError:  "Invalid request data",
 		},
 		{
 			name:       "Missing price",
-			reqBody:    map[string]interface{}{"name": "Ring", "category": "gold"},
+			reqBody:    map[string]interface{}{"name": "Ring", "category": string(model.CategoryRing), "material": string(model.MaterialGold), "store_id": store.ID},
 			wantStatus: http.StatusBadRequest,
 			wantError:  "Invalid request data",
 		},
 		{
 			name:       "Invalid price (zero)",
-			reqBody:    map[string]interface{}{"name": "Ring", "price": 0, "category": "gold"},
+			reqBody:    map[string]interface{}{"name": "Ring", "price": 0, "category": string(model.CategoryRing), "material": string(model.MaterialGold), "store_id": store.ID},
 			wantStatus: http.StatusBadRequest,
 			wantError:  "Invalid request data",
 		},
 		{
 			name:       "Negative stock",
-			reqBody:    map[string]interface{}{"name": "Ring", "price": 100000, "category": "gold", "stock_quantity": -1},
+			reqBody:    map[string]interface{}{"name": "Ring", "price": 100000, "category": string(model.CategoryRing), "material": string(model.MaterialGold), "stock_quantity": -1, "store_id": store.ID},
 			wantStatus: http.StatusBadRequest,
 			wantError:  "Invalid request data",
 		},
 		{
 			name:       "Missing category",
-			reqBody:    map[string]interface{}{"name": "Ring", "price": 100000},
+			reqBody:    map[string]interface{}{"name": "Ring", "price": 100000, "material": string(model.MaterialGold), "store_id": store.ID},
 			wantStatus: http.StatusBadRequest,
 			wantError:  "Invalid request data",
+		},
+		{
+			name:       "Missing material",
+			reqBody:    map[string]interface{}{"name": "Ring", "price": 100000, "category": string(model.CategoryRing), "store_id": store.ID},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "Invalid request data",
+		},
+		{
+			name:       "Missing store id",
+			reqBody:    map[string]interface{}{"name": "Ring", "price": 100000, "category": string(model.CategoryRing), "material": string(model.MaterialGold)},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "Invalid request data",
+		},
+		{
+			name:       "Invalid category value",
+			reqBody:    map[string]interface{}{"name": "Ring", "price": 100000, "category": "unknown", "material": string(model.MaterialGold), "store_id": store.ID},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "Invalid category",
+		},
+		{
+			name:       "Invalid material value",
+			reqBody:    map[string]interface{}{"name": "Ring", "price": 100000, "category": string(model.CategoryRing), "material": "플라스틱", "store_id": store.ID},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "Invalid material",
 		},
 	}
 
@@ -287,7 +371,8 @@ func TestProductController_UpdateProduct_Success(t *testing.T) {
 	product := &model.Product{
 		Name:          "Old Name",
 		Price:         100000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialGold,
 		StockQuantity: 5,
 		StoreID:       store.ID,
 	}
@@ -301,7 +386,8 @@ func TestProductController_UpdateProduct_Success(t *testing.T) {
 		Price:         200000,
 		Weight:        10.0,
 		Purity:        "22K",
-		Category:      model.CategoryGold,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 		ImageURL:      "http://example.com/updated.jpg",
 		StoreID:       store.ID,
@@ -324,6 +410,7 @@ func TestProductController_UpdateProduct_Success(t *testing.T) {
 	productData := response["product"].(map[string]interface{})
 	assert.Equal(t, "Updated Name", productData["name"])
 	assert.Equal(t, float64(200000), productData["price"])
+	assert.Equal(t, string(model.MaterialGold), productData["material"])
 }
 
 func TestProductController_DeleteProduct_Success(t *testing.T) {
@@ -332,7 +419,8 @@ func TestProductController_DeleteProduct_Success(t *testing.T) {
 	product := &model.Product{
 		Name:          "To Be Deleted",
 		Price:         100000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialOther,
 		StockQuantity: 5,
 		StoreID:       store.ID,
 	}

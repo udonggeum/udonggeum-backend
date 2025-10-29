@@ -27,7 +27,8 @@ func setupOrderTest(t *testing.T) (*gorm.DB, OrderRepository, *model.User, *mode
 	product := &model.Product{
 		Name:          "Test Product",
 		Price:         100000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 	}
 	testDB.Create(product)

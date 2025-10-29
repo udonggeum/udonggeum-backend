@@ -46,7 +46,8 @@ func setupCartServiceTest(t *testing.T) (CartService, *model.User, *model.Produc
 	product := &model.Product{
 		Name:          "Test Product",
 		Price:         100000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 		StoreID:       store.ID,
 	}

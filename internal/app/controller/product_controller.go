@@ -27,14 +27,34 @@ type CreateProductRequest struct {
 	Weight          float64               `json:"weight"`
 	Purity          string                `json:"purity"`
 	Category        model.ProductCategory `json:"category" binding:"required"`
+	Material        model.ProductMaterial `json:"material" binding:"required"`
 	StockQuantity   int                   `json:"stock_quantity" binding:"gte=0"`
 	ImageURL        string                `json:"image_url"`
 	StoreID         uint                  `json:"store_id" binding:"required"`
 	PopularityScore float64               `json:"popularity_score"`
 }
 
+func isValidProductCategory(category model.ProductCategory) bool {
+	switch category {
+	case model.CategoryRing, model.CategoryBracelet, model.CategoryNecklace, model.CategoryEarring, model.CategoryOther:
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidProductMaterial(material model.ProductMaterial) bool {
+	switch material {
+	case model.MaterialGold, model.MaterialSilver, model.MaterialOther:
+		return true
+	default:
+		return false
+	}
+}
+
 type productQuery struct {
 	category       *model.ProductCategory
+	material       *model.ProductMaterial
 	region         string
 	district       string
 	storeID        *uint
@@ -50,14 +70,20 @@ type productQuery struct {
 func parseProductQuery(c *gin.Context) (productQuery, error) {
 	var result productQuery
 
-	if category := c.Query("category"); category != "" {
-		cat := model.ProductCategory(strings.ToLower(category))
-		switch cat {
-		case model.CategoryGold, model.CategorySilver, model.CategoryJewelry:
-			result.category = &cat
-		default:
+	if category := strings.TrimSpace(c.Query("category")); category != "" {
+		cat := model.ProductCategory(category)
+		if !isValidProductCategory(cat) {
 			return productQuery{}, errors.New("invalid category")
 		}
+		result.category = &cat
+	}
+
+	if material := strings.TrimSpace(c.Query("material")); material != "" {
+		mat := model.ProductMaterial(material)
+		if !isValidProductMaterial(mat) {
+			return productQuery{}, errors.New("invalid material")
+		}
+		result.material = &mat
 	}
 
 	if storeIDStr := c.Query("store_id"); storeIDStr != "" {
@@ -143,6 +169,7 @@ func (ctrl *ProductController) GetAllProducts(c *gin.Context) {
 		IncludeOptions: query.includeOptions,
 		StoreID:        query.storeID,
 		Category:       query.category,
+		Material:       query.material,
 	}
 
 	products, err := ctrl.productService.ListProducts(opts)
@@ -169,7 +196,7 @@ func (ctrl *ProductController) GetAllProducts(c *gin.Context) {
 func (ctrl *ProductController) GetPopularProducts(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 
-	categoryParam := c.Query("category")
+	categoryParam := strings.TrimSpace(c.Query("category"))
 	if categoryParam == "" {
 		log.Warn("Category required for popular products", nil)
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -178,10 +205,8 @@ func (ctrl *ProductController) GetPopularProducts(c *gin.Context) {
 		return
 	}
 
-	category := model.ProductCategory(strings.ToLower(categoryParam))
-	switch category {
-	case model.CategoryGold, model.CategorySilver, model.CategoryJewelry:
-	default:
+	category := model.ProductCategory(categoryParam)
+	if !isValidProductCategory(category) {
 		log.Warn("Invalid category for popular products", map[string]interface{}{
 			"category": categoryParam,
 		})
@@ -215,6 +240,24 @@ func (ctrl *ProductController) GetPopularProducts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"products": products,
 		"count":    len(products),
+	})
+}
+
+func (ctrl *ProductController) GetProductFilters(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	filters, err := ctrl.productService.GetAvailableFilters()
+	if err != nil {
+		log.Error("Failed to fetch product filters", err, nil)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch product filters",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"categories": filters.Categories,
+		"materials":  filters.Materials,
 	})
 }
 
@@ -278,6 +321,26 @@ func (ctrl *ProductController) CreateProduct(c *gin.Context) {
 		return
 	}
 
+	if !isValidProductCategory(req.Category) {
+		log.Warn("Invalid product category", map[string]interface{}{
+			"category": req.Category,
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid category",
+		})
+		return
+	}
+
+	if !isValidProductMaterial(req.Material) {
+		log.Warn("Invalid product material", map[string]interface{}{
+			"material": req.Material,
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid material",
+		})
+		return
+	}
+
 	product := &model.Product{
 		Name:            req.Name,
 		Description:     req.Description,
@@ -285,6 +348,7 @@ func (ctrl *ProductController) CreateProduct(c *gin.Context) {
 		Weight:          req.Weight,
 		Purity:          req.Purity,
 		Category:        req.Category,
+		Material:        req.Material,
 		StockQuantity:   req.StockQuantity,
 		ImageURL:        req.ImageURL,
 		StoreID:         req.StoreID,
@@ -350,6 +414,28 @@ func (ctrl *ProductController) UpdateProduct(c *gin.Context) {
 		return
 	}
 
+	if !isValidProductCategory(req.Category) {
+		log.Warn("Invalid product category for update", map[string]interface{}{
+			"product_id": id,
+			"category":   req.Category,
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid category",
+		})
+		return
+	}
+
+	if !isValidProductMaterial(req.Material) {
+		log.Warn("Invalid product material for update", map[string]interface{}{
+			"product_id": id,
+			"material":   req.Material,
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid material",
+		})
+		return
+	}
+
 	product := &model.Product{
 		ID:              uint(id),
 		Name:            req.Name,
@@ -358,6 +444,7 @@ func (ctrl *ProductController) UpdateProduct(c *gin.Context) {
 		Weight:          req.Weight,
 		Purity:          req.Purity,
 		Category:        req.Category,
+		Material:        req.Material,
 		StockQuantity:   req.StockQuantity,
 		ImageURL:        req.ImageURL,
 		StoreID:         req.StoreID,

@@ -7,11 +7,20 @@ import (
 )
 
 type ProductCategory string // 상품 카테고리 타입
+type ProductMaterial string // 상품 재질 타입
 
 const (
-	CategoryGold    ProductCategory = "gold"    // 금 제품
-	CategorySilver  ProductCategory = "silver"  // 은 제품
-	CategoryJewelry ProductCategory = "jewelry" // 주얼리 제품
+	CategoryRing     ProductCategory = "반지"  // 반지 제품
+	CategoryBracelet ProductCategory = "팔찌"  // 팔찌 제품
+	CategoryNecklace ProductCategory = "목걸이" // 목걸이 제품
+	CategoryEarring  ProductCategory = "귀걸이" // 귀걸이 제품
+	CategoryOther    ProductCategory = "기타"  // 기타 제품
+)
+
+const (
+	MaterialGold   ProductMaterial = "금"  // 금 재질
+	MaterialSilver ProductMaterial = "은"  // 은 재질
+	MaterialOther  ProductMaterial = "기타" // 기타 재질
 )
 
 type Product struct {
@@ -22,6 +31,7 @@ type Product struct {
 	Weight          float64         `json:"weight"`                                                               // 중량(그램 등)
 	Purity          string          `json:"purity"`                                                               // 금속 순도
 	Category        ProductCategory `gorm:"type:varchar(50)" json:"category"`                                     // 상품 카테고리
+	Material        ProductMaterial `gorm:"type:varchar(50)" json:"material"`                                     // 상품 재질
 	StockQuantity   int             `gorm:"default:0" json:"stock_quantity"`                                      // 기본 재고 수량
 	ImageURL        string          `json:"image_url"`                                                            // 대표 이미지 경로
 	StoreID         uint            `gorm:"not null;index" json:"store_id"`                                       // 소속 매장 ID

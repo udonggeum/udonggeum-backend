@@ -28,6 +28,7 @@ type ProductListOptions struct {
 	Region         string
 	District       string
 	Category       *model.ProductCategory
+	Material       *model.ProductMaterial
 	StoreID        *uint
 	Search         string
 	Sort           ProductSort
@@ -38,11 +39,17 @@ type ProductListOptions struct {
 	IncludeOptions bool
 }
 
+type ProductFilterSummary struct {
+	Categories []model.ProductCategory
+	Materials  []model.ProductMaterial
+}
+
 type ProductService interface {
 	ListProducts(opts ProductListOptions) ([]model.Product, error)
 	GetProductByID(id uint) (*model.Product, error)
 	GetProductsByCategory(category model.ProductCategory) ([]model.Product, error)
 	GetPopularProducts(category model.ProductCategory, region, district string, limit int) ([]model.Product, error)
+	GetAvailableFilters() (ProductFilterSummary, error)
 	CreateProduct(product *model.Product) error
 	UpdateProduct(userID uint, product *model.Product) error
 	DeleteProduct(userID uint, id uint) error
@@ -70,6 +77,7 @@ func (s *productService) ListProducts(opts ProductListOptions) ([]model.Product,
 		"region":   opts.Region,
 		"district": opts.District,
 		"category": opts.Category,
+		"material": opts.Material,
 		"search":   opts.Search,
 		"sort":     opts.Sort,
 		"limit":    opts.Limit,
@@ -81,6 +89,7 @@ func (s *productService) ListProducts(opts ProductListOptions) ([]model.Product,
 		District:       opts.District,
 		StoreID:        opts.StoreID,
 		Search:         opts.Search,
+		Material:       opts.Material,
 		SortAscending:  opts.SortAscending,
 		PopularOnly:    opts.PopularOnly,
 		Limit:          opts.Limit,
@@ -179,10 +188,40 @@ func (s *productService) GetPopularProducts(category model.ProductCategory, regi
 	return products, nil
 }
 
+func (s *productService) GetAvailableFilters() (ProductFilterSummary, error) {
+	logger.Debug("Fetching product filter metadata", nil)
+
+	attrs, err := s.productRepo.ListAttributes()
+	if err != nil {
+		logger.Error("Failed to fetch product filter metadata", err, nil)
+		return ProductFilterSummary{}, err
+	}
+
+	summary := ProductFilterSummary{
+		Categories: attrs.Categories,
+		Materials:  attrs.Materials,
+	}
+
+	logger.Info("Product filter metadata fetched", map[string]interface{}{
+		"category_count": len(summary.Categories),
+		"material_count": len(summary.Materials),
+	})
+
+	return summary, nil
+}
+
 func (s *productService) CreateProduct(product *model.Product) error {
+	if product.Category == "" {
+		product.Category = model.CategoryOther
+	}
+	if product.Material == "" {
+		product.Material = model.MaterialOther
+	}
+
 	logger.Info("Creating new product", map[string]interface{}{
 		"name":     product.Name,
 		"category": product.Category,
+		"material": product.Material,
 		"store_id": product.StoreID,
 	})
 
@@ -190,6 +229,7 @@ func (s *productService) CreateProduct(product *model.Product) error {
 		logger.Error("Failed to create product", err, map[string]interface{}{
 			"name":     product.Name,
 			"category": product.Category,
+			"material": product.Material,
 		})
 		return err
 	}
@@ -205,6 +245,8 @@ func (s *productService) UpdateProduct(userID uint, product *model.Product) erro
 	logger.Info("Updating product", map[string]interface{}{
 		"product_id": product.ID,
 		"name":       product.Name,
+		"category":   product.Category,
+		"material":   product.Material,
 		"user_id":    userID,
 	})
 
@@ -242,10 +284,18 @@ func (s *productService) UpdateProduct(userID uint, product *model.Product) erro
 	}
 
 	product.StoreID = existing.StoreID
+	if product.Category == "" {
+		product.Category = existing.Category
+	}
+	if product.Material == "" {
+		product.Material = existing.Material
+	}
 
 	if err := s.productRepo.Update(product); err != nil {
 		logger.Error("Failed to update product", err, map[string]interface{}{
 			"product_id": product.ID,
+			"category":   product.Category,
+			"material":   product.Material,
 		})
 		return err
 	}
@@ -253,6 +303,8 @@ func (s *productService) UpdateProduct(userID uint, product *model.Product) erro
 	logger.Info("Product updated successfully", map[string]interface{}{
 		"product_id": product.ID,
 		"name":       product.Name,
+		"category":   product.Category,
+		"material":   product.Material,
 	})
 	return nil
 }

@@ -51,8 +51,8 @@ func TestProductService_ListProducts(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, products, 0)
 
-	product1 := &model.Product{Name: "Gold Bar", Price: 1000000, Category: model.CategoryGold, StockQuantity: 10, StoreID: store.ID}
-	product2 := &model.Product{Name: "Silver Ring", Price: 100000, Category: model.CategorySilver, StockQuantity: 20, StoreID: store.ID}
+	product1 := &model.Product{Name: "Gold Ring", Price: 1000000, Category: model.CategoryRing, Material: model.MaterialGold, StockQuantity: 10, StoreID: store.ID}
+	product2 := &model.Product{Name: "Silver Bracelet", Price: 100000, Category: model.CategoryBracelet, Material: model.MaterialSilver, StockQuantity: 20, StoreID: store.ID}
 
 	productService.CreateProduct(product1)
 	productService.CreateProduct(product2)
@@ -66,9 +66,10 @@ func TestProductService_GetProductByID(t *testing.T) {
 	productService, _, _, store := setupProductServiceTest(t)
 
 	product := &model.Product{
-		Name:          "Gold Bar",
+		Name:          "Gold Necklace",
 		Price:         1000000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 		StoreID:       store.ID,
 	}
@@ -100,33 +101,66 @@ func TestProductService_GetProductByID(t *testing.T) {
 func TestProductService_GetProductsByCategory(t *testing.T) {
 	productService, _, _, store := setupProductServiceTest(t)
 
-	goldProduct := &model.Product{Name: "Gold Bar", Price: 1000000, Category: model.CategoryGold, StockQuantity: 10, StoreID: store.ID}
-	silverProduct := &model.Product{Name: "Silver Ring", Price: 100000, Category: model.CategorySilver, StockQuantity: 20, StoreID: store.ID}
+	ringProduct := &model.Product{Name: "Gold Ring", Price: 1000000, Category: model.CategoryRing, Material: model.MaterialGold, StockQuantity: 10, StoreID: store.ID}
+	braceletProduct := &model.Product{Name: "Silver Bracelet", Price: 100000, Category: model.CategoryBracelet, Material: model.MaterialSilver, StockQuantity: 20, StoreID: store.ID}
 
-	productService.CreateProduct(goldProduct)
-	productService.CreateProduct(silverProduct)
+	productService.CreateProduct(ringProduct)
+	productService.CreateProduct(braceletProduct)
 
-	goldProducts, err := productService.GetProductsByCategory(model.CategoryGold)
+	ringProducts, err := productService.GetProductsByCategory(model.CategoryRing)
 	assert.NoError(t, err)
-	assert.Len(t, goldProducts, 1)
-	assert.Equal(t, "Gold Bar", goldProducts[0].Name)
+	assert.Len(t, ringProducts, 1)
+	assert.Equal(t, "Gold Ring", ringProducts[0].Name)
 
-	silverProducts, err := productService.GetProductsByCategory(model.CategorySilver)
+	braceletProducts, err := productService.GetProductsByCategory(model.CategoryBracelet)
 	assert.NoError(t, err)
-	assert.Len(t, silverProducts, 1)
-	assert.Equal(t, "Silver Ring", silverProducts[0].Name)
+	assert.Len(t, braceletProducts, 1)
+	assert.Equal(t, "Silver Bracelet", braceletProducts[0].Name)
+}
+
+func TestProductService_GetAvailableFilters(t *testing.T) {
+	productService, _, _, store := setupProductServiceTest(t)
+
+	productService.CreateProduct(&model.Product{
+		Name:          "Gold Ring",
+		Price:         300000,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
+		StockQuantity: 5,
+		StoreID:       store.ID,
+	})
+	productService.CreateProduct(&model.Product{
+		Name:          "Silver Necklace",
+		Price:         250000,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialSilver,
+		StockQuantity: 3,
+		StoreID:       store.ID,
+	})
+
+	filters, err := productService.GetAvailableFilters()
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, []model.ProductCategory{
+		model.CategoryRing,
+		model.CategoryNecklace,
+	}, filters.Categories)
+	assert.ElementsMatch(t, []model.ProductMaterial{
+		model.MaterialGold,
+		model.MaterialSilver,
+	}, filters.Materials)
 }
 
 func TestProductService_CreateProduct(t *testing.T) {
 	productService, _, _, store := setupProductServiceTest(t)
 
 	product := &model.Product{
-		Name:          "24K Gold Bar",
+		Name:          "24K Gold Pendant",
 		Description:   "Pure gold",
 		Price:         5000000,
 		Weight:        100,
 		Purity:        "24K",
-		Category:      model.CategoryGold,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialGold,
 		StockQuantity: 5,
 		StoreID:       store.ID,
 	}
@@ -140,9 +174,10 @@ func TestProductService_UpdateProduct(t *testing.T) {
 	productService, _, user, store := setupProductServiceTest(t)
 
 	product := &model.Product{
-		Name:          "Gold Bar",
+		Name:          "Gold Bangle",
 		Price:         1000000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryBracelet,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 		StoreID:       store.ID,
 	}
@@ -165,7 +200,8 @@ func TestProductService_UpdateProduct_NotFound(t *testing.T) {
 		ID:            9999,
 		Name:          "Non-existing",
 		Price:         1000000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryOther,
+		Material:      model.MaterialOther,
 		StockQuantity: 10,
 		StoreID:       store.ID,
 	}
@@ -195,9 +231,10 @@ func TestProductService_UpdateProduct_AccessDenied(t *testing.T) {
 	require.NoError(t, dbConn.Create(otherStore).Error)
 
 	product := &model.Product{
-		Name:          "Other Gold Bar",
+		Name:          "Other Gold Necklace",
 		Price:         1200000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialGold,
 		StockQuantity: 8,
 		StoreID:       otherStore.ID,
 	}
@@ -212,9 +249,10 @@ func TestProductService_DeleteProduct(t *testing.T) {
 	productService, _, user, store := setupProductServiceTest(t)
 
 	product := &model.Product{
-		Name:          "Gold Bar",
+		Name:          "Gold Pendant",
 		Price:         1000000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryNecklace,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 		StoreID:       store.ID,
 	}
@@ -255,9 +293,10 @@ func TestProductService_DeleteProduct_AccessDenied(t *testing.T) {
 	require.NoError(t, dbConn.Create(otherStore).Error)
 
 	product := &model.Product{
-		Name:          "Delete Gold Bar",
+		Name:          "Delete Gold Ring",
 		Price:         1500000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
 		StockQuantity: 7,
 		StoreID:       otherStore.ID,
 	}
@@ -271,9 +310,10 @@ func TestProductService_CheckStock(t *testing.T) {
 	productService, _, _, store := setupProductServiceTest(t)
 
 	product := &model.Product{
-		Name:          "Gold Bar",
+		Name:          "Gold Earrings",
 		Price:         1000000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryEarring,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 		StoreID:       store.ID,
 	}

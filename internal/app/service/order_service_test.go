@@ -44,7 +44,8 @@ func setupOrderServiceTest(t *testing.T) (OrderService, *gorm.DB, *model.User, *
 	product := &model.Product{
 		Name:          "Test Product",
 		Price:         100000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 		StoreID:       store.ID,
 	}
@@ -235,7 +236,8 @@ func TestOrderService_CreateOrder_WithMultipleItems(t *testing.T) {
 	product2 := &model.Product{
 		Name:          "Test Product 2",
 		Price:         50000,
-		Category:      model.CategorySilver,
+		Category:      model.CategoryBracelet,
+		Material:      model.MaterialSilver,
 		StockQuantity: 20,
 		StoreID:       store.ID,
 	}

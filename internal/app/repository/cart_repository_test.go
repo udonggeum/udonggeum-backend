@@ -29,7 +29,8 @@ func setupCartTest(t *testing.T) (*gorm.DB, CartRepository, *model.User, *model.
 	product := &model.Product{
 		Name:          "Test Product",
 		Price:         100000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryOther,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 	}
 	testDB.Create(product)

@@ -52,6 +52,9 @@ Authorization: Bearer {{accessToken}}
 ### 전체 상품 조회
 GET {{apiUrl}}/products
 
+### 상품 필터(카테고리/재질) 조회
+GET {{apiUrl}}/products/filters
+
 ### 상품 상세 조회
 GET {{apiUrl}}/products/{{productId}}
 
@@ -66,9 +69,11 @@ Content-Type: application/json
   "price": 4250000,
   "weight": 50,
   "purity": "24K",
-  "category": "gold",
+  "category": "기타",
+  "material": "금",
   "stock_quantity": 20,
-  "image_url": "https://example.com/images/gold-bar-50g.jpg"
+  "image_url": "https://example.com/images/gold-bar-50g.jpg",
+  "store_id": 1
 }
 
 ### 상품 수정 (관리자 전용)
@@ -82,9 +87,11 @@ Content-Type: application/json
   "price": 4300000,
   "weight": 50,
   "purity": "24K",
-  "category": "gold",
+  "category": "기타",
+  "material": "금",
   "stock_quantity": 15,
-  "image_url": "https://example.com/images/gold-bar-50g-updated.jpg"
+  "image_url": "https://example.com/images/gold-bar-50g-updated.jpg",
+  "store_id": 1
 }
 
 ### 상품 삭제 (관리자 전용)

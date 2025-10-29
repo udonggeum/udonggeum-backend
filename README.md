@@ -200,6 +200,11 @@ Authorization: Bearer {access_token}
 GET /api/v1/products
 ```
 
+#### 상품 필터(카테고리/재질) 조회
+```http
+GET /api/v1/products/filters
+```
+
 #### 상품 상세 조회
 ```http
 GET /api/v1/products/:id
@@ -217,9 +222,11 @@ Content-Type: application/json
   "price": 8500000,
   "weight": 100,
   "purity": "24K",
-  "category": "gold",
+  "category": "기타",
+  "material": "금",
   "stock_quantity": 10,
-  "image_url": "https://example.com/image.jpg"
+  "image_url": "https://example.com/image.jpg",
+  "store_id": 1
 }
 ```
 

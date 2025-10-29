@@ -53,7 +53,8 @@ func setupOrderControllerTest(t *testing.T) (*OrderController, *gin.Engine, *gor
 	product := &model.Product{
 		Name:          "Test Product",
 		Price:         100000,
-		Category:      model.CategoryGold,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
 		StockQuantity: 10,
 		StoreID:       store.ID,
 	}
