@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  app:
+    image: ghcr.io/udonggeum/udonggeum-backend:latest
+    container_name: udonggeum-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # DB 연결정보 (Go 서버에서 환경변수로 읽어가게)
+        DB_HOST: db
+        DB_PORT: 5432
+        DB_USER: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: udonggeum
+        DB_SSLMODE: disable
+      # 필요하면 추가 (예: Gin 환경, JWT 시크릿 등)
+        GIN_MODE: release
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15
+    container_name: udonggeum-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: udonggeum
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  db_data:
