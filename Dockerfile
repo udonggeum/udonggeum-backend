@@ -12,7 +12,7 @@ RUN go mod download
 COPY . .
 
 # Go 빌드 (cmd/server 경로 기준)
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o app ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o app ./cmd/server
 
 # 2단계: Run stage
 FROM alpine:latest

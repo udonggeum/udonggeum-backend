@@ -2,7 +2,6 @@ all: build
 
 init:
 	@echo "Initializing..."
-	@$(MAKE) tool_download
 	@$(MAKE) build
 
 build:
