@@ -22,6 +22,8 @@ type Store struct {
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`                       // 삭제 시각(소프트 삭제)
 
 	Products []Product `gorm:"foreignKey:StoreID" json:"products,omitempty"` // 보유 상품 목록
+
+	CategoryCounts map[ProductCategory]int `gorm:"-" json:"category_counts,omitempty"` // 카테고리별 상품 수
 }
 
 func (Store) TableName() string {

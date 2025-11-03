@@ -135,6 +135,11 @@ func (r *storeRepository) FindAll(filter StoreFilter) ([]model.Store, error) {
 		return nil, err
 	}
 
+	if err := r.populateCategoryCounts(&stores); err != nil {
+		logger.Error("Failed to populate category counts for stores", err, nil)
+		return nil, err
+	}
+
 	logger.Debug("Stores found", map[string]interface{}{
 		"count": len(stores),
 	})
@@ -185,4 +190,60 @@ func (r *storeRepository) ListLocations() ([]StoreLocation, error) {
 		"count": len(locations),
 	})
 	return locations, nil
+}
+
+func (r *storeRepository) populateCategoryCounts(stores *[]model.Store) error {
+	if len(*stores) == 0 {
+		return nil
+	}
+
+	storeIDs := make([]uint, len(*stores))
+	storeIndex := make(map[uint]*model.Store, len(*stores))
+	for i := range *stores {
+		store := &(*stores)[i]
+		storeIDs[i] = store.ID
+		store.CategoryCounts = initializeCategoryCounts()
+		storeIndex[store.ID] = store
+	}
+
+	type categoryCountRow struct {
+		StoreID  uint
+		Category model.ProductCategory
+		Count    int64
+	}
+
+	var rows []categoryCountRow
+	if err := r.db.Model(&model.Product{}).
+		Select("store_id, category, COUNT(*) as count").
+		Where("store_id IN ?", storeIDs).
+		Group("store_id, category").
+		Scan(&rows).Error; err != nil {
+		return err
+	}
+
+	for _, row := range rows {
+		if store, ok := storeIndex[row.StoreID]; ok {
+			store.CategoryCounts[row.Category] = int(row.Count)
+		}
+	}
+	return nil
+}
+
+func initializeCategoryCounts() map[model.ProductCategory]int {
+	categories := productCategories()
+	counts := make(map[model.ProductCategory]int, len(categories))
+	for _, category := range categories {
+		counts[category] = 0
+	}
+	return counts
+}
+
+func productCategories() []model.ProductCategory {
+	return []model.ProductCategory{
+		model.CategoryRing,
+		model.CategoryBracelet,
+		model.CategoryNecklace,
+		model.CategoryEarring,
+		model.CategoryOther,
+	}
 }
