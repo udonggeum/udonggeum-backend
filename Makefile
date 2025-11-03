@@ -8,7 +8,6 @@ build:
 	@echo "Building..."
 	@go mod tidy
 	@go mod download
-	@$(MAKE) sqlc_gen
 	@${MAKE} build_alone
 
 pushall:
@@ -16,12 +15,7 @@ pushall:
 	@docker push ghcr.io/udonggeum/udonggeum-backend:latest
 
 build_alone:
-	@go build -tags migrate -o bin/$(shell basename $(PWD)) ./cmd
-
-sqlc_gen:
-	@echo "Generating sqlc..."
-	@cd internal/infra/sqlc && \
-	sqlc generate
+	@go build -tags migrate -o bin/$(shell basename $(PWD)) ./cmd/server
 
 run:
 	@echo "Running..."
