@@ -57,14 +57,14 @@ func seedInitialData() error {
 		return nil
 	}
 
-	adminPassword, err := util.HashPassword("password123!")
+	adminPassword, err := util.HashPassword("test12!@")
 	if err != nil {
 		logger.Error("Failed to hash admin password", err)
 		return err
 	}
 
 	admin := model.User{
-		Email:        "admin@example.com",
+		Email:        "test@test.com ",
 		PasswordHash: adminPassword,
 		Name:         "관리자",
 		Role:         model.RoleAdmin,

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
 )
@@ -27,7 +28,8 @@ type AddToCartRequest struct {
 }
 
 type UpdateCartRequest struct {
-	Quantity int `json:"quantity" binding:"required,gt=0"`
+	Quantity        int   `json:"quantity" binding:"required,gt=0"`
+	ProductOptionID *uint `json:"product_option_id"`
 }
 
 // GetCart returns user's cart
@@ -197,8 +199,22 @@ func (ctrl *CartController) UpdateCartItem(c *gin.Context) {
 		return
 	}
 
+	var raw map[string]interface{}
+	if err := c.ShouldBindBodyWith(&raw, binding.JSON); err != nil {
+		log.Warn("Invalid update cart request payload", map[string]interface{}{
+			"user_id":      userID,
+			"cart_item_id": id,
+			"error":        err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
 	var req UpdateCartRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		log.Warn("Invalid update cart request", map[string]interface{}{
 			"user_id":      userID,
 			"cart_item_id": id,
@@ -211,13 +227,17 @@ func (ctrl *CartController) UpdateCartItem(c *gin.Context) {
 		return
 	}
 
+	_, optionProvided := raw["product_option_id"]
+
 	log.Debug("Updating cart item", map[string]interface{}{
-		"user_id":      userID,
-		"cart_item_id": id,
-		"quantity":     req.Quantity,
+		"user_id":           userID,
+		"cart_item_id":      id,
+		"quantity":          req.Quantity,
+		"product_option_id": req.ProductOptionID,
+		"update_option":     optionProvided,
 	})
 
-	err = ctrl.cartService.UpdateCartItem(userID, uint(id), req.Quantity)
+	err = ctrl.cartService.UpdateCartItem(userID, uint(id), req.Quantity, req.ProductOptionID, optionProvided)
 	if err != nil {
 		if errors.Is(err, service.ErrCartItemNotFound) {
 			log.Warn("Cart item not found", map[string]interface{}{
@@ -226,6 +246,17 @@ func (ctrl *CartController) UpdateCartItem(c *gin.Context) {
 			})
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "Cart item not found",
+			})
+			return
+		}
+		if errors.Is(err, service.ErrInvalidProductOption) {
+			log.Warn("Invalid product option for cart update", map[string]interface{}{
+				"user_id":           userID,
+				"cart_item_id":      id,
+				"product_option_id": req.ProductOptionID,
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid product option",
 			})
 			return
 		}
@@ -251,9 +282,10 @@ func (ctrl *CartController) UpdateCartItem(c *gin.Context) {
 	}
 
 	log.Info("Cart item updated successfully", map[string]interface{}{
-		"user_id":      userID,
-		"cart_item_id": id,
-		"quantity":     req.Quantity,
+		"user_id":           userID,
+		"cart_item_id":      id,
+		"quantity":          req.Quantity,
+		"product_option_id": req.ProductOptionID,
 	})
 
 	c.JSON(http.StatusOK, gin.H{

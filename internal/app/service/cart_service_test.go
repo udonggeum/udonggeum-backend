@@ -126,7 +126,7 @@ func TestCartService_UpdateCartItem_Success(t *testing.T) {
 	cartItemID := items[0].ID
 
 	// Update quantity
-	err := cartService.UpdateCartItem(user.ID, cartItemID, 5)
+	err := cartService.UpdateCartItem(user.ID, cartItemID, 5, nil, false)
 	assert.NoError(t, err)
 
 	// Verify
@@ -137,7 +137,7 @@ func TestCartService_UpdateCartItem_Success(t *testing.T) {
 func TestCartService_UpdateCartItem_NotFound(t *testing.T) {
 	cartService, user, _, _, _ := setupCartServiceTest(t)
 
-	err := cartService.UpdateCartItem(user.ID, 9999, 5)
+	err := cartService.UpdateCartItem(user.ID, 9999, 5, nil, false)
 	assert.ErrorIs(t, err, ErrCartItemNotFound)
 }
 
@@ -150,7 +150,7 @@ func TestCartService_UpdateCartItem_WrongUser(t *testing.T) {
 	cartItemID := items[0].ID
 
 	// Try to update with different user
-	err := cartService.UpdateCartItem(user.ID+1, cartItemID, 5)
+	err := cartService.UpdateCartItem(user.ID+1, cartItemID, 5, nil, false)
 	assert.ErrorIs(t, err, ErrCartItemNotFound)
 }
 
@@ -163,8 +163,94 @@ func TestCartService_UpdateCartItem_InsufficientStock(t *testing.T) {
 	cartItemID := items[0].ID
 
 	// Try to update to quantity exceeding stock
-	err := cartService.UpdateCartItem(user.ID, cartItemID, 100)
+	err := cartService.UpdateCartItem(user.ID, cartItemID, 100, nil, false)
 	assert.ErrorIs(t, err, ErrInsufficientStock)
+}
+
+func TestCartService_UpdateCartItem_ChangeProductOption(t *testing.T) {
+	cartService, user, product, _, testDB := setupCartServiceTest(t)
+
+	// Create product option
+	option := &model.ProductOption{
+		ProductID:       product.ID,
+		Name:            "사이즈",
+		Value:           "11호",
+		AdditionalPrice: 10000,
+		StockQuantity:   5,
+	}
+	testDB.Create(option)
+
+	// Add item without option
+	require.NoError(t, cartService.AddToCart(user.ID, product.ID, nil, 1))
+	items, _ := cartService.GetUserCart(user.ID)
+	cartItemID := items[0].ID
+
+	// Update to use the option
+	err := cartService.UpdateCartItem(user.ID, cartItemID, 1, &option.ID, true)
+	assert.NoError(t, err)
+
+	// Verify option updated
+	items, _ = cartService.GetUserCart(user.ID)
+	require.NotNil(t, items[0].ProductOptionID)
+	assert.Equal(t, option.ID, *items[0].ProductOptionID)
+}
+
+func TestCartService_UpdateCartItem_RemoveProductOption(t *testing.T) {
+	cartService, user, product, _, testDB := setupCartServiceTest(t)
+
+	option := &model.ProductOption{
+		ProductID:       product.ID,
+		Name:            "색상",
+		Value:           "골드",
+		AdditionalPrice: 5000,
+		StockQuantity:   3,
+	}
+	testDB.Create(option)
+
+	// Add item with option
+	require.NoError(t, cartService.AddToCart(user.ID, product.ID, &option.ID, 1))
+	items, _ := cartService.GetUserCart(user.ID)
+	cartItemID := items[0].ID
+	require.NotNil(t, items[0].ProductOptionID)
+
+	// Remove option
+	err := cartService.UpdateCartItem(user.ID, cartItemID, 1, nil, true)
+	assert.NoError(t, err)
+
+	items, _ = cartService.GetUserCart(user.ID)
+	assert.Nil(t, items[0].ProductOptionID)
+}
+
+func TestCartService_UpdateCartItem_InvalidProductOption(t *testing.T) {
+	cartService, user, product, _, testDB := setupCartServiceTest(t)
+
+	// Add item
+	require.NoError(t, cartService.AddToCart(user.ID, product.ID, nil, 1))
+	items, _ := cartService.GetUserCart(user.ID)
+	cartItemID := items[0].ID
+
+	// Create option for different product
+	otherProduct := &model.Product{
+		Name:          "Other Product",
+		Price:         50000,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
+		StockQuantity: 10,
+		StoreID:       product.StoreID,
+	}
+	testDB.Create(otherProduct)
+
+	invalidOption := &model.ProductOption{
+		ProductID:       otherProduct.ID,
+		Name:            "사이즈",
+		Value:           "13호",
+		AdditionalPrice: 15000,
+		StockQuantity:   5,
+	}
+	testDB.Create(invalidOption)
+
+	err := cartService.UpdateCartItem(user.ID, cartItemID, 1, &invalidOption.ID, true)
+	assert.ErrorIs(t, err, ErrInvalidProductOption)
 }
 
 func TestCartService_RemoveFromCart_Success(t *testing.T) {

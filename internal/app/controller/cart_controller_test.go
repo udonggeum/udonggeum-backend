@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -509,6 +510,148 @@ func TestCartController_UpdateCartItem_InvalidRequest(t *testing.T) {
 			assert.Equal(t, tt.wantError, response["error"])
 		})
 	}
+}
+
+func TestCartController_UpdateCartItem_ChangeProductOption(t *testing.T) {
+	controller, router, testDB, user, product := setupCartControllerTest(t)
+
+	option := &model.ProductOption{
+		ProductID:       product.ID,
+		Name:            "사이즈",
+		Value:           "11호",
+		AdditionalPrice: 5000,
+		StockQuantity:   3,
+	}
+	testDB.Create(option)
+
+	cartRepo := repository.NewCartRepository(testDB)
+	cartItem := &model.CartItem{
+		UserID:    user.ID,
+		ProductID: product.ID,
+		Quantity:  1,
+	}
+	require.NoError(t, cartRepo.Create(cartItem))
+
+	router.PUT("/cart/:id", func(c *gin.Context) {
+		setUserIDInContext(c, user.ID)
+		controller.UpdateCartItem(c)
+	})
+
+	reqBody := map[string]interface{}{
+		"quantity":          1,
+		"product_option_id": option.ID,
+	}
+
+	jsonBody, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPut, "/cart/"+strconv.FormatUint(uint64(cartItem.ID), 10), bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	updated, err := cartRepo.FindByID(cartItem.ID)
+	require.NoError(t, err)
+	require.NotNil(t, updated.ProductOptionID)
+	assert.Equal(t, option.ID, *updated.ProductOptionID)
+}
+
+func TestCartController_UpdateCartItem_RemoveProductOption(t *testing.T) {
+	controller, router, testDB, user, product := setupCartControllerTest(t)
+
+	option := &model.ProductOption{
+		ProductID:       product.ID,
+		Name:            "색상",
+		Value:           "골드",
+		AdditionalPrice: 0,
+		StockQuantity:   2,
+	}
+	testDB.Create(option)
+
+	cartRepo := repository.NewCartRepository(testDB)
+	cartItem := &model.CartItem{
+		UserID:          user.ID,
+		ProductID:       product.ID,
+		ProductOptionID: &option.ID,
+		Quantity:        1,
+	}
+	require.NoError(t, cartRepo.Create(cartItem))
+
+	router.PUT("/cart/:id", func(c *gin.Context) {
+		setUserIDInContext(c, user.ID)
+		controller.UpdateCartItem(c)
+	})
+
+	reqBody := map[string]interface{}{
+		"quantity":          1,
+		"product_option_id": nil,
+	}
+
+	jsonBody, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPut, "/cart/"+strconv.FormatUint(uint64(cartItem.ID), 10), bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	updated, err := cartRepo.FindByID(cartItem.ID)
+	require.NoError(t, err)
+	assert.Nil(t, updated.ProductOptionID)
+}
+
+func TestCartController_UpdateCartItem_InvalidProductOption(t *testing.T) {
+	controller, router, testDB, user, product := setupCartControllerTest(t)
+
+	otherProduct := &model.Product{
+		Name:          "Other Product",
+		Price:         120000,
+		Category:      model.CategoryRing,
+		Material:      model.MaterialGold,
+		StockQuantity: 5,
+		StoreID:       product.StoreID,
+	}
+	testDB.Create(otherProduct)
+
+	invalidOption := &model.ProductOption{
+		ProductID:       otherProduct.ID,
+		Name:            "사이즈",
+		Value:           "13호",
+		AdditionalPrice: 7000,
+		StockQuantity:   2,
+	}
+	testDB.Create(invalidOption)
+
+	cartRepo := repository.NewCartRepository(testDB)
+	cartItem := &model.CartItem{
+		UserID:    user.ID,
+		ProductID: product.ID,
+		Quantity:  1,
+	}
+	require.NoError(t, cartRepo.Create(cartItem))
+
+	router.PUT("/cart/:id", func(c *gin.Context) {
+		setUserIDInContext(c, user.ID)
+		controller.UpdateCartItem(c)
+	})
+
+	reqBody := map[string]interface{}{
+		"quantity":          1,
+		"product_option_id": invalidOption.ID,
+	}
+
+	jsonBody, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPut, "/cart/"+strconv.FormatUint(uint64(cartItem.ID), 10), bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "Invalid product option", response["error"])
 }
 
 func TestCartController_RemoveFromCart_Success(t *testing.T) {
