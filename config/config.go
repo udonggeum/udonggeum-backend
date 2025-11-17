@@ -43,8 +43,16 @@ type CORSConfig struct {
 }
 
 type PaymentConfig struct {
-	GatewayURL string
-	APIKey     string
+	KakaoPay KakaoPayConfig
+}
+
+type KakaoPayConfig struct {
+	AdminKey    string
+	CID         string
+	BaseURL     string
+	ApprovalURL string
+	FailURL     string
+	CancelURL   string
 }
 
 func Load() (*Config, error) {
@@ -76,8 +84,14 @@ func Load() (*Config, error) {
 			AllowedOrigins: parseSlice(getEnv("ALLOWED_ORIGINS", "http://localhost:3000")),
 		},
 		Payment: PaymentConfig{
-			GatewayURL: getEnv("PAYMENT_GATEWAY_URL", "https://api.payment-mock.com"),
-			APIKey:     getEnv("PAYMENT_API_KEY", "mock-api-key"),
+			KakaoPay: KakaoPayConfig{
+				AdminKey:    getEnv("KAKAOPAY_ADMIN_KEY", ""),
+				CID:         getEnv("KAKAOPAY_CID", "TC0ONETIME"),
+				BaseURL:     getEnv("KAKAOPAY_BASE_URL", "https://open-api.kakaopay.com/online/v1/payment"),
+				ApprovalURL: getEnv("KAKAOPAY_APPROVAL_URL", "http://localhost:8080/api/v1/payments/kakao/success"),
+				FailURL:     getEnv("KAKAOPAY_FAIL_URL", "http://localhost:8080/api/v1/payments/kakao/fail"),
+				CancelURL:   getEnv("KAKAOPAY_CANCEL_URL", "http://localhost:8080/api/v1/payments/kakao/cancel"),
+			},
 		},
 	}
 
