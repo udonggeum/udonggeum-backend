@@ -33,6 +33,10 @@ type Order struct {
 	TotalPrice      float64         `gorm:"not null" json:"total_price"`                                                 // 총 상품 금액
 	Status          OrderStatus     `gorm:"type:varchar(20);default:'pending'" json:"status"`                            // 주문 상태
 	PaymentStatus   PaymentStatus   `gorm:"type:varchar(20);default:'pending'" json:"payment_status"`                    // 결제 상태
+	PaymentProvider string          `gorm:"type:varchar(50)" json:"payment_provider,omitempty"`                          // 결제 제공자 (kakaopay, card 등)
+	PaymentTID      string          `gorm:"type:varchar(50);index" json:"payment_tid,omitempty"`                         // 결제 거래 ID (Kakao Pay TID)
+	PaymentAID      string          `gorm:"type:varchar(50)" json:"payment_aid,omitempty"`                               // 결제 승인 ID (Kakao Pay AID)
+	PaymentApprovedAt *time.Time    `json:"payment_approved_at,omitempty"`                                               // 결제 승인 시각
 	FulfillmentType FulfillmentType `gorm:"type:varchar(20);default:'delivery'" json:"fulfillment_type"`                 // 이행 방식
 	ShippingAddress string          `gorm:"type:text" json:"shipping_address"`                                           // 배송지 주소
 	PickupStoreID   *uint           `gorm:"index" json:"pickup_store_id,omitempty"`                                      // 픽업 매장 ID
