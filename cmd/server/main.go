@@ -77,11 +77,17 @@ func main() {
 	cartService := service.NewCartService(cartRepo, productRepo, productOptionRepo)
 	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, dbConn, productOptionRepo)
 
+	paymentService, err := service.NewPaymentService(orderRepo, cfg, dbConn)
+	if err != nil {
+		logger.Fatal("Failed to initialize payment service", err)
+	}
+
 	authController := controller.NewAuthController(authService)
 	storeController := controller.NewStoreController(storeService)
 	productController := controller.NewProductController(productService)
 	cartController := controller.NewCartController(cartService)
 	orderController := controller.NewOrderController(orderService)
+	paymentController := controller.NewPaymentController(paymentService)
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
@@ -91,6 +97,7 @@ func main() {
 		productController,
 		cartController,
 		orderController,
+		paymentController,
 		authMiddleware,
 		cfg,
 	)
