@@ -29,6 +29,7 @@ func SetupTestDB() (*gorm.DB, error) {
 		&model.Order{},
 		&model.OrderItem{},
 		&model.CartItem{},
+		&model.WishlistItem{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate test database: %w", err)
@@ -49,7 +50,7 @@ func CleanupTestDB(db *gorm.DB) {
 
 // TruncateAllTables removes all data from tables
 func TruncateAllTables(db *gorm.DB) error {
-	tables := []string{"cart_items", "order_items", "orders", "product_options", "products", "stores", "users"}
+	tables := []string{"wishlist_items", "cart_items", "order_items", "orders", "product_options", "products", "stores", "users"}
 	for _, table := range tables {
 		if err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)).Error; err != nil {
 			return err

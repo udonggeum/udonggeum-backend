@@ -27,6 +27,8 @@ type StoreRequest struct {
 	PhoneNumber string `json:"phone_number"`
 	ImageURL    string `json:"image_url"`
 	Description string `json:"description"`
+	OpenTime    string `json:"open_time"`
+	CloseTime   string `json:"close_time"`
 }
 
 func (ctrl *StoreController) ListStores(c *gin.Context) {
@@ -139,6 +141,8 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		PhoneNumber: req.PhoneNumber,
 		ImageURL:    req.ImageURL,
 		Description: req.Description,
+		OpenTime:    req.OpenTime,
+		CloseTime:   req.CloseTime,
 	}
 
 	created, err := ctrl.storeService.CreateStore(store)
@@ -210,6 +214,8 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 		PhoneNumber: req.PhoneNumber,
 		ImageURL:    req.ImageURL,
 		Description: req.Description,
+		OpenTime:    req.OpenTime,
+		CloseTime:   req.CloseTime,
 	})
 	if err != nil {
 		switch err {

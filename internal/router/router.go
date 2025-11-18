@@ -8,13 +8,16 @@ import (
 )
 
 type Router struct {
-	authController    *controller.AuthController
-	storeController   *controller.StoreController
-	productController *controller.ProductController
-	cartController    *controller.CartController
-	orderController   *controller.OrderController
-	authMiddleware    *middleware.AuthMiddleware
-	config            *config.Config
+	authController     *controller.AuthController
+	storeController    *controller.StoreController
+	productController  *controller.ProductController
+	cartController     *controller.CartController
+	orderController    *controller.OrderController
+	wishlistController *controller.WishlistController
+	addressController  *controller.AddressController
+	sellerController   *controller.SellerController
+	authMiddleware     *middleware.AuthMiddleware
+	config             *config.Config
 }
 
 func NewRouter(
@@ -23,17 +26,23 @@ func NewRouter(
 	productController *controller.ProductController,
 	cartController *controller.CartController,
 	orderController *controller.OrderController,
+	wishlistController *controller.WishlistController,
+	addressController *controller.AddressController,
+	sellerController *controller.SellerController,
 	authMiddleware *middleware.AuthMiddleware,
 	cfg *config.Config,
 ) *Router {
 	return &Router{
-		authController:    authController,
-		storeController:   storeController,
-		productController: productController,
-		cartController:    cartController,
-		orderController:   orderController,
-		authMiddleware:    authMiddleware,
-		config:            cfg,
+		authController:     authController,
+		storeController:    storeController,
+		productController:  productController,
+		cartController:     cartController,
+		orderController:    orderController,
+		wishlistController: wishlistController,
+		addressController:  addressController,
+		sellerController:   sellerController,
+		authMiddleware:     authMiddleware,
+		config:             cfg,
 	}
 }
 
@@ -59,7 +68,10 @@ func (r *Router) Setup() *gin.Engine {
 		{
 			auth.POST("/register", r.authController.Register)
 			auth.POST("/login", r.authController.Login)
+			auth.POST("/forgot-password", r.authController.ForgotPassword)
+			auth.POST("/reset-password", r.authController.ResetPassword)
 			auth.GET("/me", r.authMiddleware.Authenticate(), r.authController.GetMe)
+			auth.PUT("/me", r.authMiddleware.Authenticate(), r.authController.UpdateMe)
 		}
 
 		stores := v1.Group("/stores")
@@ -69,17 +81,17 @@ func (r *Router) Setup() *gin.Engine {
 			stores.GET("/:id", r.storeController.GetStoreByID)
 			stores.POST("",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.storeController.CreateStore,
 			)
 			stores.PUT("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.storeController.UpdateStore,
 			)
 			stores.DELETE("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.storeController.DeleteStore,
 			)
 		}
@@ -93,17 +105,17 @@ func (r *Router) Setup() *gin.Engine {
 
 			products.POST("",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.productController.CreateProduct,
 			)
 			products.PUT("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.productController.UpdateProduct,
 			)
 			products.DELETE("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.productController.DeleteProduct,
 			)
 		}
@@ -130,6 +142,33 @@ func (r *Router) Setup() *gin.Engine {
 				r.orderController.UpdateOrderStatus,
 			)
 			orders.PUT("/:id/payment", r.orderController.UpdatePaymentStatus)
+		}
+
+		wishlist := v1.Group("/wishlist")
+		wishlist.Use(r.authMiddleware.Authenticate())
+		{
+			wishlist.GET("", r.wishlistController.GetWishlist)
+			wishlist.POST("", r.wishlistController.AddToWishlist)
+			wishlist.DELETE("/:product_id", r.wishlistController.RemoveFromWishlist)
+		}
+
+		addresses := v1.Group("/addresses")
+		addresses.Use(r.authMiddleware.Authenticate())
+		{
+			addresses.GET("", r.addressController.ListAddresses)
+			addresses.POST("", r.addressController.CreateAddress)
+			addresses.PUT("/:id", r.addressController.UpdateAddress)
+			addresses.DELETE("/:id", r.addressController.DeleteAddress)
+			addresses.PUT("/:id/default", r.addressController.SetDefaultAddress)
+		}
+
+		seller := v1.Group("/seller")
+		seller.Use(r.authMiddleware.Authenticate())
+		{
+			seller.GET("/stores", r.sellerController.ListMyStores)
+			seller.GET("/dashboard", r.sellerController.GetDashboard)
+			seller.GET("/stores/:store_id/orders", r.sellerController.GetStoreOrders)
+			seller.PUT("/orders/:id/status", r.sellerController.UpdateOrderStatus)
 		}
 	}
 

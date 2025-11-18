@@ -65,6 +65,9 @@ func main() {
 	productOptionRepo := repository.NewProductOptionRepository(dbConn)
 	orderRepo := repository.NewOrderRepository(dbConn)
 	cartRepo := repository.NewCartRepository(dbConn)
+	wishlistRepo := repository.NewWishlistRepository(dbConn)
+	addressRepo := repository.NewAddressRepository(dbConn)
+	passwordResetRepo := repository.NewPasswordResetRepository(dbConn)
 
 	authService := service.NewAuthService(
 		userRepo,
@@ -72,16 +75,23 @@ func main() {
 		cfg.JWT.AccessTokenExpiry,
 		cfg.JWT.RefreshTokenExpiry,
 	)
+	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
 	storeService := service.NewStoreService(storeRepo)
 	productService := service.NewProductService(productRepo, productOptionRepo)
 	cartService := service.NewCartService(cartRepo, productRepo, productOptionRepo)
 	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, dbConn, productOptionRepo)
+	wishlistService := service.NewWishlistService(wishlistRepo, productRepo)
+	addressService := service.NewAddressService(addressRepo)
+	sellerService := service.NewSellerService(orderRepo, storeRepo)
 
-	authController := controller.NewAuthController(authService)
+	authController := controller.NewAuthController(authService, passwordResetService)
 	storeController := controller.NewStoreController(storeService)
 	productController := controller.NewProductController(productService)
 	cartController := controller.NewCartController(cartService)
 	orderController := controller.NewOrderController(orderService)
+	wishlistController := controller.NewWishlistController(wishlistService)
+	addressController := controller.NewAddressController(addressService)
+	sellerController := controller.NewSellerController(sellerService, storeService)
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
@@ -91,6 +101,9 @@ func main() {
 		productController,
 		cartController,
 		orderController,
+		wishlistController,
+		addressController,
+		sellerController,
 		authMiddleware,
 		cfg,
 	)
