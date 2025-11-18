@@ -59,7 +59,7 @@ func (r *cartRepository) FindByUserID(userID uint) ([]model.CartItem, error) {
 	var cartItems []model.CartItem
 	err := r.db.Where("user_id = ?", userID).
 		Preload("Product", func(db *gorm.DB) *gorm.DB {
-			return db.Preload("Store")
+			return db.Preload("Store").Preload("Options")
 		}).
 		Preload("ProductOption").
 		Find(&cartItems).Error
@@ -140,13 +140,26 @@ func (r *cartRepository) FindByUserProductOption(userID, productID uint, product
 
 func (r *cartRepository) Update(cartItem *model.CartItem) error {
 	logger.Debug("Updating cart item in database", map[string]interface{}{
-		"cart_item_id": cartItem.ID,
-		"user_id":      cartItem.UserID,
-		"product_id":   cartItem.ProductID,
-		"quantity":     cartItem.Quantity,
+		"cart_item_id":      cartItem.ID,
+		"user_id":           cartItem.UserID,
+		"product_id":        cartItem.ProductID,
+		"quantity":          cartItem.Quantity,
+		"product_option_id": cartItem.ProductOptionID,
 	})
 
-	if err := r.db.Save(cartItem).Error; err != nil {
+	// Use Updates to properly handle pointer fields (like ProductOptionID)
+	updates := map[string]interface{}{
+		"quantity": cartItem.Quantity,
+	}
+
+	// Explicitly set product_option_id (handles both nil and non-nil cases)
+	if cartItem.ProductOptionID == nil {
+		updates["product_option_id"] = nil
+	} else {
+		updates["product_option_id"] = *cartItem.ProductOptionID
+	}
+
+	if err := r.db.Model(&model.CartItem{}).Where("id = ?", cartItem.ID).Updates(updates).Error; err != nil {
 		logger.Error("Failed to update cart item in database", err, map[string]interface{}{
 			"cart_item_id": cartItem.ID,
 			"user_id":      cartItem.UserID,
@@ -156,9 +169,10 @@ func (r *cartRepository) Update(cartItem *model.CartItem) error {
 	}
 
 	logger.Debug("Cart item updated in database", map[string]interface{}{
-		"cart_item_id": cartItem.ID,
-		"user_id":      cartItem.UserID,
-		"product_id":   cartItem.ProductID,
+		"cart_item_id":      cartItem.ID,
+		"user_id":           cartItem.UserID,
+		"product_id":        cartItem.ProductID,
+		"product_option_id": cartItem.ProductOptionID,
 	})
 	return nil
 }

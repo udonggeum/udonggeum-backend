@@ -59,7 +59,6 @@
 | stock_quantity   | int            | default `0`                                         | 기본 재고 수량         |
 | image_url        | string         |                                                     | 대표 이미지 경로       |
 | store_id         | uint           | not null, indexed                                   | 소속 매장 ID           |
-| popularity_score | float          | default `0`                                         | 인기 점수              |
 | view_count       | int            | default `0`                                         | 조회수                 |
 | created_at       | timestamp      | auto-managed                                        | 생성 시각              |
 | updated_at       | timestamp      | auto-managed                                        | 수정 시각              |

@@ -14,6 +14,8 @@ const (
 	ProductSortPrice      ProductSort = "price"
 	ProductSortCreatedAt  ProductSort = "created_at"
 	ProductSortPopularity ProductSort = "popularity"
+	ProductSortWishlist   ProductSort = "wishlist"
+	ProductSortViewCount  ProductSort = "view_count"
 )
 
 type ProductFilter struct {
@@ -25,7 +27,6 @@ type ProductFilter struct {
 	Search         string
 	SortBy         ProductSort
 	SortAscending  bool
-	PopularOnly    bool
 	Limit          int
 	Offset         int
 	IncludeOptions bool
@@ -42,11 +43,12 @@ type ProductRepository interface {
 	FindWithFilter(filter ProductFilter) ([]model.Product, error)
 	FindByID(id uint) (*model.Product, error)
 	FindByCategory(category model.ProductCategory) ([]model.Product, error)
-	FindPopularByCategory(category model.ProductCategory, limit int, region, district string) ([]model.Product, error)
+	FindPopularByCategory(category *model.ProductCategory, limit int, region, district string) ([]model.Product, error)
 	ListAttributes() (ProductAttributes, error)
 	Update(product *model.Product) error
 	Delete(id uint) error
 	UpdateStock(id uint, quantity int) error
+	IncrementViewCount(id uint) error
 }
 
 type productRepository struct {
@@ -112,6 +114,13 @@ func (r *productRepository) FindWithFilter(filter ProductFilter) ([]model.Produc
 
 	query := r.baseQuery(filter.IncludeOptions)
 
+	wishlistCountsSubquery := r.db.Table("wishlist_items").
+		Select("wishlist_items.product_id, COUNT(*) AS count").
+		Where("wishlist_items.deleted_at IS NULL").
+		Group("wishlist_items.product_id")
+
+	query = query.Joins("LEFT JOIN (?) AS wishlist_counts ON wishlist_counts.product_id = products.id", wishlistCountsSubquery)
+
 	if filter.Region != "" || filter.District != "" {
 		query = query.Joins("JOIN stores ON stores.id = products.store_id")
 		if filter.Region != "" {
@@ -120,8 +129,9 @@ func (r *productRepository) FindWithFilter(filter ProductFilter) ([]model.Produc
 		if filter.District != "" {
 			query = query.Where("stores.district = ?", filter.District)
 		}
-		query = query.Select("products.*")
 	}
+
+	query = query.Select("products.*, COALESCE(wishlist_counts.count, 0) AS wishlist_count")
 
 	if filter.Category != nil {
 		query = query.Where("products.category = ?", *filter.Category)
@@ -140,10 +150,6 @@ func (r *productRepository) FindWithFilter(filter ProductFilter) ([]model.Produc
 		query = query.Where("products.name LIKE ? OR products.description LIKE ?", like, like)
 	}
 
-	if filter.PopularOnly {
-		query = query.Where("products.popularity_score > 0")
-	}
-
 	switch filter.SortBy {
 	case ProductSortPrice:
 		direction := "DESC"
@@ -157,6 +163,20 @@ func (r *productRepository) FindWithFilter(filter ProductFilter) ([]model.Produc
 			direction = "ASC"
 		}
 		query = query.Order("products.created_at " + direction)
+	case ProductSortWishlist:
+		direction := "DESC"
+		if filter.SortAscending {
+			direction = "ASC"
+		}
+		query = query.Order("COALESCE(wishlist_counts.count, 0) " + direction)
+		query = query.Order("products.created_at DESC")
+	case ProductSortViewCount:
+		direction := "DESC"
+		if filter.SortAscending {
+			direction = "ASC"
+		}
+		query = query.Order("products.view_count " + direction)
+		query = query.Order("products.created_at DESC")
 	case ProductSortPopularity:
 		fallthrough
 	default:
@@ -164,7 +184,8 @@ func (r *productRepository) FindWithFilter(filter ProductFilter) ([]model.Produc
 		if filter.SortAscending {
 			direction = "ASC"
 		}
-		query = query.Order("products.popularity_score " + direction)
+		popularityExpr := "COALESCE(wishlist_counts.count, 0) * CASE WHEN products.view_count > 0 THEN products.view_count ELSE 0 END"
+		query = query.Order(popularityExpr + " " + direction)
 		query = query.Order("products.created_at DESC")
 	}
 
@@ -272,14 +293,15 @@ func (r *productRepository) ListAttributes() (ProductAttributes, error) {
 	return result, nil
 }
 
-func (r *productRepository) FindPopularByCategory(category model.ProductCategory, limit int, region, district string) ([]model.Product, error) {
+func (r *productRepository) FindPopularByCategory(category *model.ProductCategory, limit int, region, district string) ([]model.Product, error) {
 	criteria := ProductFilter{
-		Category:    &category,
-		Limit:       limit,
-		PopularOnly: true,
-		Region:      region,
-		District:    district,
-		SortBy:      ProductSortPopularity,
+		Limit:    limit,
+		Region:   region,
+		District: district,
+		SortBy:   ProductSortPopularity,
+	}
+	if category != nil {
+		criteria.Category = category
 	}
 	return r.FindWithFilter(criteria)
 }
@@ -345,6 +367,25 @@ func (r *productRepository) UpdateStock(id uint, quantity int) error {
 	logger.Debug("Product stock updated in database", map[string]interface{}{
 		"product_id": id,
 		"quantity":   quantity,
+	})
+	return nil
+}
+
+func (r *productRepository) IncrementViewCount(id uint) error {
+	logger.Debug("Incrementing product view count in database", map[string]interface{}{
+		"product_id": id,
+	})
+
+	if err := r.db.Model(&model.Product{}).Where("id = ?", id).
+		Update("view_count", gorm.Expr("view_count + ?", 1)).Error; err != nil {
+		logger.Error("Failed to increment product view count in database", err, map[string]interface{}{
+			"product_id": id,
+		})
+		return err
+	}
+
+	logger.Debug("Product view count incremented in database", map[string]interface{}{
+		"product_id": id,
 	})
 	return nil
 }

@@ -39,6 +39,7 @@ func setupIntegrationTest(t *testing.T) *TestServer {
 	productOptionRepo := repository.NewProductOptionRepository(testDB)
 	orderRepo := repository.NewOrderRepository(testDB)
 	cartRepo := repository.NewCartRepository(testDB)
+	passwordResetRepo := repository.NewPasswordResetRepository(testDB)
 
 	// Setup services
 	authService := service.NewAuthService(
@@ -47,12 +48,13 @@ func setupIntegrationTest(t *testing.T) *TestServer {
 		15*time.Minute,
 		7*24*time.Hour,
 	)
+	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
 	productService := service.NewProductService(productRepo, productOptionRepo)
 	cartService := service.NewCartService(cartRepo, productRepo, productOptionRepo)
 	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, testDB, productOptionRepo)
 
 	// Setup controllers
-	authController := controller.NewAuthController(authService)
+	authController := controller.NewAuthController(authService, passwordResetService)
 	productController := controller.NewProductController(productService)
 	cartController := controller.NewCartController(cartService)
 	orderController := controller.NewOrderController(orderService)

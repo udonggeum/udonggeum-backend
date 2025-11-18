@@ -25,14 +25,16 @@ func setupAuthControllerTest(t *testing.T) (*gin.Engine, *AuthController, servic
 	require.NoError(t, err)
 
 	userRepo := repository.NewUserRepository(testDB)
+	passwordResetRepo := repository.NewPasswordResetRepository(testDB)
 	authService := service.NewAuthService(
 		userRepo,
 		"test-secret",
 		15*time.Minute,
 		7*24*time.Hour,
 	)
+	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
 
-	ctrl := NewAuthController(authService)
+	ctrl := NewAuthController(authService, passwordResetService)
 	authMiddleware := middleware.NewAuthMiddleware("test-secret")
 
 	router := gin.New()

@@ -21,6 +21,7 @@ type AuthService interface {
 	Register(email, password, name, phone string) (*model.User, *util.TokenPair, error)
 	Login(email, password string) (*model.User, *util.TokenPair, error)
 	GetUserByID(id uint) (*model.User, error)
+	UpdateProfile(userID uint, name, phone string) (*model.User, error)
 }
 
 type authService struct {
@@ -192,6 +193,62 @@ func (s *authService) GetUserByID(id uint) (*model.User, error) {
 	logger.Debug("User fetched successfully", map[string]interface{}{
 		"user_id": user.ID,
 		"email":   user.Email,
+	})
+
+	return user, nil
+}
+
+func (s *authService) UpdateProfile(userID uint, name, phone string) (*model.User, error) {
+	logger.Info("Updating user profile", map[string]interface{}{
+		"user_id": userID,
+	})
+
+	// Fetch existing user
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Warn("User not found for profile update", map[string]interface{}{
+				"user_id": userID,
+			})
+			return nil, ErrUserNotFound
+		}
+		logger.Error("Failed to fetch user for profile update", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, err
+	}
+
+	// Update fields if provided
+	updated := false
+	if name != "" && name != user.Name {
+		user.Name = name
+		updated = true
+	}
+	if phone != "" && phone != user.Phone {
+		user.Phone = phone
+		updated = true
+	}
+
+	// Only update if there are changes
+	if !updated {
+		logger.Debug("No changes detected for user profile", map[string]interface{}{
+			"user_id": userID,
+		})
+		return user, nil
+	}
+
+	// Save changes
+	if err := s.userRepo.Update(user); err != nil {
+		logger.Error("Failed to update user profile", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, err
+	}
+
+	logger.Info("User profile updated successfully", map[string]interface{}{
+		"user_id": user.ID,
+		"name":    user.Name,
+		"phone":   user.Phone,
 	})
 
 	return user, nil

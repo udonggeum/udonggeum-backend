@@ -18,6 +18,9 @@ func Migrate() error {
 		&model.Order{},
 		&model.OrderItem{},
 		&model.CartItem{},
+		&model.WishlistItem{},
+		&model.Address{},
+		&model.PasswordReset{},
 	}
 
 	if err := DB.AutoMigrate(models...); err != nil {
@@ -99,16 +102,15 @@ func seedInitialData() error {
 			Products: []productSeed{
 				{
 					Product: model.Product{
-						Name:            "24K 클래식 골드 반지",
-						Description:     "강남 프리미엄 라인을 대표하는 24K 순금 반지",
-						Price:           980000,
-						Weight:          7.2,
-						Purity:          "24K",
-						Category:        model.CategoryRing,
-						Material:        model.MaterialGold,
-						StockQuantity:   12,
-						ImageURL:        "https://cdn.udonggeum.com/products/24k-classic-ring.jpg",
-						PopularityScore: 92,
+						Name:          "24K 클래식 골드 반지",
+						Description:   "강남 프리미엄 라인을 대표하는 24K 순금 반지",
+						Price:         980000,
+						Weight:        7.2,
+						Purity:        "24K",
+						Category:      model.CategoryRing,
+						Material:      model.MaterialGold,
+						StockQuantity: 12,
+						ImageURL:      "https://cdn.udonggeum.com/products/24k-classic-ring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -134,16 +136,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "18K 로즈골드 체인 팔찌",
-						Description:     "은은한 로즈골드 컬러의 섬세한 체인 팔찌",
-						Price:           420000,
-						Weight:          5.1,
-						Purity:          "18K",
-						Category:        model.CategoryBracelet,
-						Material:        model.MaterialGold,
-						StockQuantity:   15,
-						ImageURL:        "https://cdn.udonggeum.com/products/18k-rose-bracelet.jpg",
-						PopularityScore: 88,
+						Name:          "18K 로즈골드 체인 팔찌",
+						Description:   "은은한 로즈골드 컬러의 섬세한 체인 팔찌",
+						Price:         420000,
+						Weight:        5.1,
+						Purity:        "18K",
+						Category:      model.CategoryBracelet,
+						Material:      model.MaterialGold,
+						StockQuantity: 15,
+						ImageURL:      "https://cdn.udonggeum.com/products/18k-rose-bracelet.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -169,16 +170,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "다이아몬드 펜던트 목걸이",
-						Description:     "라운드 브릴리언트 컷 다이아몬드를 세팅한 18K 목걸이",
-						Price:           1250000,
-						Weight:          3.4,
-						Purity:          "18K",
-						Category:        model.CategoryNecklace,
-						Material:        model.MaterialGold,
-						StockQuantity:   9,
-						ImageURL:        "https://cdn.udonggeum.com/products/diamond-pendant-necklace.jpg",
-						PopularityScore: 95,
+						Name:          "다이아몬드 펜던트 목걸이",
+						Description:   "라운드 브릴리언트 컷 다이아몬드를 세팅한 18K 목걸이",
+						Price:         1250000,
+						Weight:        3.4,
+						Purity:        "18K",
+						Category:      model.CategoryNecklace,
+						Material:      model.MaterialGold,
+						StockQuantity: 9,
+						ImageURL:      "https://cdn.udonggeum.com/products/diamond-pendant-necklace.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -217,16 +217,15 @@ func seedInitialData() error {
 			Products: []productSeed{
 				{
 					Product: model.Product{
-						Name:            "925 실버 커브 팔찌",
-						Description:     "데일리로 착용하기 좋은 커브 체인 디자인의 실버 팔찌",
-						Price:           98000,
-						Weight:          4.8,
-						Purity:          "925",
-						Category:        model.CategoryBracelet,
-						Material:        model.MaterialSilver,
-						StockQuantity:   18,
-						ImageURL:        "https://cdn.udonggeum.com/products/925-curve-bracelet.jpg",
-						PopularityScore: 84,
+						Name:          "925 실버 커브 팔찌",
+						Description:   "데일리로 착용하기 좋은 커브 체인 디자인의 실버 팔찌",
+						Price:         98000,
+						Weight:        4.8,
+						Purity:        "925",
+						Category:      model.CategoryBracelet,
+						Material:      model.MaterialSilver,
+						StockQuantity: 18,
+						ImageURL:      "https://cdn.udonggeum.com/products/925-curve-bracelet.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -252,16 +251,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "실버 오벌 스터드 귀걸이",
-						Description:     "은은한 광택의 타원형 실버 스터드 귀걸이",
-						Price:           65000,
-						Weight:          2.1,
-						Purity:          "925",
-						Category:        model.CategoryEarring,
-						Material:        model.MaterialSilver,
-						StockQuantity:   24,
-						ImageURL:        "https://cdn.udonggeum.com/products/silver-oval-stud.jpg",
-						PopularityScore: 79,
+						Name:          "실버 오벌 스터드 귀걸이",
+						Description:   "은은한 광택의 타원형 실버 스터드 귀걸이",
+						Price:         65000,
+						Weight:        2.1,
+						Purity:        "925",
+						Category:      model.CategoryEarring,
+						Material:      model.MaterialSilver,
+						StockQuantity: 24,
+						ImageURL:      "https://cdn.udonggeum.com/products/silver-oval-stud.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -300,16 +298,15 @@ func seedInitialData() error {
 			Products: []productSeed{
 				{
 					Product: model.Product{
-						Name:            "18K 골드 웨이브 반지",
-						Description:     "파도에서 영감을 받은 웨이브 라인의 골드 반지",
-						Price:           720000,
-						Weight:          5.6,
-						Purity:          "18K",
-						Category:        model.CategoryRing,
-						Material:        model.MaterialGold,
-						StockQuantity:   15,
-						ImageURL:        "https://cdn.udonggeum.com/products/18k-wave-ring.jpg",
-						PopularityScore: 86,
+						Name:          "18K 골드 웨이브 반지",
+						Description:   "파도에서 영감을 받은 웨이브 라인의 골드 반지",
+						Price:         720000,
+						Weight:        5.6,
+						Purity:        "18K",
+						Category:      model.CategoryRing,
+						Material:      model.MaterialGold,
+						StockQuantity: 15,
+						ImageURL:      "https://cdn.udonggeum.com/products/18k-wave-ring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -335,16 +332,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "14K 미니멀 드롭 귀걸이",
-						Description:     "섬세한 드롭 형태의 14K 미니멀 귀걸이",
-						Price:           210000,
-						Weight:          2.4,
-						Purity:          "14K",
-						Category:        model.CategoryEarring,
-						Material:        model.MaterialGold,
-						StockQuantity:   21,
-						ImageURL:        "https://cdn.udonggeum.com/products/14k-drop-earring.jpg",
-						PopularityScore: 82,
+						Name:          "14K 미니멀 드롭 귀걸이",
+						Description:   "섬세한 드롭 형태의 14K 미니멀 귀걸이",
+						Price:         210000,
+						Weight:        2.4,
+						Purity:        "14K",
+						Category:      model.CategoryEarring,
+						Material:      model.MaterialGold,
+						StockQuantity: 21,
+						ImageURL:      "https://cdn.udonggeum.com/products/14k-drop-earring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -370,16 +366,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "실버 조개 펜던트 목걸이",
-						Description:     "제철 조개에서 영감을 받은 해운대 감성 목걸이",
-						Price:           89000,
-						Weight:          3.2,
-						Purity:          "925",
-						Category:        model.CategoryNecklace,
-						Material:        model.MaterialSilver,
-						StockQuantity:   18,
-						ImageURL:        "https://cdn.udonggeum.com/products/silver-shell-necklace.jpg",
-						PopularityScore: 78,
+						Name:          "실버 조개 펜던트 목걸이",
+						Description:   "제철 조개에서 영감을 받은 해운대 감성 목걸이",
+						Price:         89000,
+						Weight:        3.2,
+						Purity:        "925",
+						Category:      model.CategoryNecklace,
+						Material:      model.MaterialSilver,
+						StockQuantity: 18,
+						ImageURL:      "https://cdn.udonggeum.com/products/silver-shell-necklace.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -418,16 +413,15 @@ func seedInitialData() error {
 			Products: []productSeed{
 				{
 					Product: model.Product{
-						Name:            "순금 용 문양 팔찌",
-						Description:     "정교한 용 문양이 새겨진 순금 팔찌",
-						Price:           1350000,
-						Weight:          10.5,
-						Purity:          "24K",
-						Category:        model.CategoryBracelet,
-						Material:        model.MaterialGold,
-						StockQuantity:   9,
-						ImageURL:        "https://cdn.udonggeum.com/products/dragon-gold-bracelet.jpg",
-						PopularityScore: 93,
+						Name:          "순금 용 문양 팔찌",
+						Description:   "정교한 용 문양이 새겨진 순금 팔찌",
+						Price:         1350000,
+						Weight:        10.5,
+						Purity:        "24K",
+						Category:      model.CategoryBracelet,
+						Material:      model.MaterialGold,
+						StockQuantity: 9,
+						ImageURL:      "https://cdn.udonggeum.com/products/dragon-gold-bracelet.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -453,16 +447,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "925 실버 커플 페어링",
-						Description:     "심플한 라인의 커플 실버 반지 세트",
-						Price:           158000,
-						Weight:          6.0,
-						Purity:          "925",
-						Category:        model.CategoryRing,
-						Material:        model.MaterialSilver,
-						StockQuantity:   12,
-						ImageURL:        "https://cdn.udonggeum.com/products/925-couple-ring-set.jpg",
-						PopularityScore: 85,
+						Name:          "925 실버 커플 페어링",
+						Description:   "심플한 라인의 커플 실버 반지 세트",
+						Price:         158000,
+						Weight:        6.0,
+						Purity:        "925",
+						Category:      model.CategoryRing,
+						Material:      model.MaterialSilver,
+						StockQuantity: 12,
+						ImageURL:      "https://cdn.udonggeum.com/products/925-couple-ring-set.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -501,16 +494,15 @@ func seedInitialData() error {
 			Products: []productSeed{
 				{
 					Product: model.Product{
-						Name:            "14K 옐로우골드 레이어드 목걸이",
-						Description:     "레이어드 연출이 쉬운 14K 옐로우골드 목걸이",
-						Price:           398000,
-						Weight:          3.9,
-						Purity:          "14K",
-						Category:        model.CategoryNecklace,
-						Material:        model.MaterialGold,
-						StockQuantity:   15,
-						ImageURL:        "https://cdn.udonggeum.com/products/14k-layered-necklace.jpg",
-						PopularityScore: 83,
+						Name:          "14K 옐로우골드 레이어드 목걸이",
+						Description:   "레이어드 연출이 쉬운 14K 옐로우골드 목걸이",
+						Price:         398000,
+						Weight:        3.9,
+						Purity:        "14K",
+						Category:      model.CategoryNecklace,
+						Material:      model.MaterialGold,
+						StockQuantity: 15,
+						ImageURL:      "https://cdn.udonggeum.com/products/14k-layered-necklace.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -536,16 +528,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "실버 하프라인 반지",
-						Description:     "반원 형태의 라인이 돋보이는 실버 반지",
-						Price:           72000,
-						Weight:          4.1,
-						Purity:          "925",
-						Category:        model.CategoryRing,
-						Material:        model.MaterialSilver,
-						StockQuantity:   18,
-						ImageURL:        "https://cdn.udonggeum.com/products/silver-halfline-ring.jpg",
-						PopularityScore: 77,
+						Name:          "실버 하프라인 반지",
+						Description:   "반원 형태의 라인이 돋보이는 실버 반지",
+						Price:         72000,
+						Weight:        4.1,
+						Purity:        "925",
+						Category:      model.CategoryRing,
+						Material:      model.MaterialSilver,
+						StockQuantity: 18,
+						ImageURL:      "https://cdn.udonggeum.com/products/silver-halfline-ring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -584,16 +575,15 @@ func seedInitialData() error {
 			Products: []productSeed{
 				{
 					Product: model.Product{
-						Name:            "18K 클래식 진주 귀걸이",
-						Description:     "고급 담수 진주를 세팅한 18K 클래식 귀걸이",
-						Price:           268000,
-						Weight:          2.9,
-						Purity:          "18K",
-						Category:        model.CategoryEarring,
-						Material:        model.MaterialGold,
-						StockQuantity:   18,
-						ImageURL:        "https://cdn.udonggeum.com/products/18k-classic-pearl-earring.jpg",
-						PopularityScore: 89,
+						Name:          "18K 클래식 진주 귀걸이",
+						Description:   "고급 담수 진주를 세팅한 18K 클래식 귀걸이",
+						Price:         268000,
+						Weight:        2.9,
+						Purity:        "18K",
+						Category:      model.CategoryEarring,
+						Material:      model.MaterialGold,
+						StockQuantity: 18,
+						ImageURL:      "https://cdn.udonggeum.com/products/18k-classic-pearl-earring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -619,16 +609,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "24K 승리의 반지",
-						Description:     "승리를 상징하는 엠블럼을 새긴 24K 반지",
-						Price:           1150000,
-						Weight:          8.4,
-						Purity:          "24K",
-						Category:        model.CategoryRing,
-						Material:        model.MaterialGold,
-						StockQuantity:   12,
-						ImageURL:        "https://cdn.udonggeum.com/products/24k-victory-ring.jpg",
-						PopularityScore: 94,
+						Name:          "24K 승리의 반지",
+						Description:   "승리를 상징하는 엠블럼을 새긴 24K 반지",
+						Price:         1150000,
+						Weight:        8.4,
+						Purity:        "24K",
+						Category:      model.CategoryRing,
+						Material:      model.MaterialGold,
+						StockQuantity: 12,
+						ImageURL:      "https://cdn.udonggeum.com/products/24k-victory-ring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -654,16 +643,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "가죽 & 골드 믹스 팔찌",
-						Description:     "천연 가죽과 골드 포인트를 조합한 믹스 팔찌",
-						Price:           189000,
-						Weight:          9.8,
-						Purity:          "가죽/18K",
-						Category:        model.CategoryBracelet,
-						Material:        model.MaterialOther,
-						StockQuantity:   21,
-						ImageURL:        "https://cdn.udonggeum.com/products/leather-gold-mix-bracelet.jpg",
-						PopularityScore: 81,
+						Name:          "가죽 & 골드 믹스 팔찌",
+						Description:   "천연 가죽과 골드 포인트를 조합한 믹스 팔찌",
+						Price:         189000,
+						Weight:        9.8,
+						Purity:        "가죽/18K",
+						Category:      model.CategoryBracelet,
+						Material:      model.MaterialOther,
+						StockQuantity: 21,
+						ImageURL:      "https://cdn.udonggeum.com/products/leather-gold-mix-bracelet.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -702,16 +690,15 @@ func seedInitialData() error {
 			Products: []productSeed{
 				{
 					Product: model.Product{
-						Name:            "실버 타이다이 목걸이",
-						Description:     "수공예 타이다이 패턴을 적용한 실버 펜던트 목걸이",
-						Price:           115000,
-						Weight:          4.5,
-						Purity:          "925",
-						Category:        model.CategoryNecklace,
-						Material:        model.MaterialSilver,
-						StockQuantity:   18,
-						ImageURL:        "https://cdn.udonggeum.com/products/silver-tiedye-necklace.jpg",
-						PopularityScore: 76,
+						Name:          "실버 타이다이 목걸이",
+						Description:   "수공예 타이다이 패턴을 적용한 실버 펜던트 목걸이",
+						Price:         115000,
+						Weight:        4.5,
+						Purity:        "925",
+						Category:      model.CategoryNecklace,
+						Material:      model.MaterialSilver,
+						StockQuantity: 18,
+						ImageURL:      "https://cdn.udonggeum.com/products/silver-tiedye-necklace.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -737,16 +724,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "14K 컬러 큐빅 반지",
-						Description:     "다채로운 컬러 큐빅을 세팅한 포인트 반지",
-						Price:           248000,
-						Weight:          3.3,
-						Purity:          "14K",
-						Category:        model.CategoryRing,
-						Material:        model.MaterialGold,
-						StockQuantity:   15,
-						ImageURL:        "https://cdn.udonggeum.com/products/14k-color-cubic-ring.jpg",
-						PopularityScore: 80,
+						Name:          "14K 컬러 큐빅 반지",
+						Description:   "다채로운 컬러 큐빅을 세팅한 포인트 반지",
+						Price:         248000,
+						Weight:        3.3,
+						Purity:        "14K",
+						Category:      model.CategoryRing,
+						Material:      model.MaterialGold,
+						StockQuantity: 15,
+						ImageURL:      "https://cdn.udonggeum.com/products/14k-color-cubic-ring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -785,16 +771,15 @@ func seedInitialData() error {
 			Products: []productSeed{
 				{
 					Product: model.Product{
-						Name:            "18K 라운드 커프 팔찌",
-						Description:     "부드러운 곡선으로 마감된 라운드 커프 팔찌",
-						Price:           560000,
-						Weight:          6.2,
-						Purity:          "18K",
-						Category:        model.CategoryBracelet,
-						Material:        model.MaterialGold,
-						StockQuantity:   12,
-						ImageURL:        "https://cdn.udonggeum.com/products/18k-round-cuff-bracelet.jpg",
-						PopularityScore: 85,
+						Name:          "18K 라운드 커프 팔찌",
+						Description:   "부드러운 곡선으로 마감된 라운드 커프 팔찌",
+						Price:         560000,
+						Weight:        6.2,
+						Purity:        "18K",
+						Category:      model.CategoryBracelet,
+						Material:      model.MaterialGold,
+						StockQuantity: 12,
+						ImageURL:      "https://cdn.udonggeum.com/products/18k-round-cuff-bracelet.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -820,16 +805,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "티타늄 데일리 귀걸이",
-						Description:     "알레르기 걱정 없는 티타늄 소재의 데일리 귀걸이",
-						Price:           42000,
-						Weight:          1.8,
-						Purity:          "티타늄",
-						Category:        model.CategoryEarring,
-						Material:        model.MaterialOther,
-						StockQuantity:   30,
-						ImageURL:        "https://cdn.udonggeum.com/products/titanium-daily-earring.jpg",
-						PopularityScore: 72,
+						Name:          "티타늄 데일리 귀걸이",
+						Description:   "알레르기 걱정 없는 티타늄 소재의 데일리 귀걸이",
+						Price:         42000,
+						Weight:        1.8,
+						Purity:        "티타늄",
+						Category:      model.CategoryEarring,
+						Material:      model.MaterialOther,
+						StockQuantity: 30,
+						ImageURL:      "https://cdn.udonggeum.com/products/titanium-daily-earring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -855,16 +839,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "925 실버 타원 반지",
-						Description:     "타원형 라인이 돋보이는 두께감 있는 실버 반지",
-						Price:           83000,
-						Weight:          5.2,
-						Purity:          "925",
-						Category:        model.CategoryRing,
-						Material:        model.MaterialSilver,
-						StockQuantity:   21,
-						ImageURL:        "https://cdn.udonggeum.com/products/925-oval-ring.jpg",
-						PopularityScore: 78,
+						Name:          "925 실버 타원 반지",
+						Description:   "타원형 라인이 돋보이는 두께감 있는 실버 반지",
+						Price:         83000,
+						Weight:        5.2,
+						Purity:        "925",
+						Category:      model.CategoryRing,
+						Material:      model.MaterialSilver,
+						StockQuantity: 21,
+						ImageURL:      "https://cdn.udonggeum.com/products/925-oval-ring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -903,16 +886,15 @@ func seedInitialData() error {
 			Products: []productSeed{
 				{
 					Product: model.Product{
-						Name:            "제주 오름 실버 목걸이",
-						Description:     "제주의 오름 실루엣을 형상화한 실버 목걸이",
-						Price:           108000,
-						Weight:          4.0,
-						Purity:          "925",
-						Category:        model.CategoryNecklace,
-						Material:        model.MaterialSilver,
-						StockQuantity:   18,
-						ImageURL:        "https://cdn.udonggeum.com/products/jeju-oreum-necklace.jpg",
-						PopularityScore: 82,
+						Name:          "제주 오름 실버 목걸이",
+						Description:   "제주의 오름 실루엣을 형상화한 실버 목걸이",
+						Price:         108000,
+						Weight:        4.0,
+						Purity:        "925",
+						Category:      model.CategoryNecklace,
+						Material:      model.MaterialSilver,
+						StockQuantity: 18,
+						ImageURL:      "https://cdn.udonggeum.com/products/jeju-oreum-necklace.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -938,16 +920,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "14K 산호 참 반지",
-						Description:     "제주 산호를 닮은 참 장식을 더한 14K 반지",
-						Price:           356000,
-						Weight:          4.6,
-						Purity:          "14K",
-						Category:        model.CategoryRing,
-						Material:        model.MaterialGold,
-						StockQuantity:   12,
-						ImageURL:        "https://cdn.udonggeum.com/products/14k-coral-charm-ring.jpg",
-						PopularityScore: 88,
+						Name:          "14K 산호 참 반지",
+						Description:   "제주 산호를 닮은 참 장식을 더한 14K 반지",
+						Price:         356000,
+						Weight:        4.6,
+						Purity:        "14K",
+						Category:      model.CategoryRing,
+						Material:      model.MaterialGold,
+						StockQuantity: 12,
+						ImageURL:      "https://cdn.udonggeum.com/products/14k-coral-charm-ring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -986,16 +967,15 @@ func seedInitialData() error {
 			Products: []productSeed{
 				{
 					Product: model.Product{
-						Name:            "진주 드롭 체인 귀걸이",
-						Description:     "바다의 진주를 닮은 드롭 체인 디자인 귀걸이",
-						Price:           178000,
-						Weight:          3.1,
-						Purity:          "925",
-						Category:        model.CategoryEarring,
-						Material:        model.MaterialOther,
-						StockQuantity:   21,
-						ImageURL:        "https://cdn.udonggeum.com/products/pearl-chain-earring.jpg",
-						PopularityScore: 86,
+						Name:          "진주 드롭 체인 귀걸이",
+						Description:   "바다의 진주를 닮은 드롭 체인 디자인 귀걸이",
+						Price:         178000,
+						Weight:        3.1,
+						Purity:        "925",
+						Category:      model.CategoryEarring,
+						Material:      model.MaterialOther,
+						StockQuantity: 21,
+						ImageURL:      "https://cdn.udonggeum.com/products/pearl-chain-earring.jpg",
 					},
 					Options: []model.ProductOption{
 						{
@@ -1021,16 +1001,15 @@ func seedInitialData() error {
 				},
 				{
 					Product: model.Product{
-						Name:            "실버 파도 팔찌",
-						Description:     "서귀포 앞바다의 파도를 형상화한 실버 팔찌",
-						Price:           98000,
-						Weight:          5.0,
-						Purity:          "925",
-						Category:        model.CategoryBracelet,
-						Material:        model.MaterialSilver,
-						StockQuantity:   18,
-						ImageURL:        "https://cdn.udonggeum.com/products/silver-wave-bracelet.jpg",
-						PopularityScore: 80,
+						Name:          "실버 파도 팔찌",
+						Description:   "서귀포 앞바다의 파도를 형상화한 실버 팔찌",
+						Price:         98000,
+						Weight:        5.0,
+						Purity:        "925",
+						Category:      model.CategoryBracelet,
+						Material:      model.MaterialSilver,
+						StockQuantity: 18,
+						ImageURL:      "https://cdn.udonggeum.com/products/silver-wave-bracelet.jpg",
 					},
 					Options: []model.ProductOption{
 						{
