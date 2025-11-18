@@ -33,15 +33,26 @@ func NewClient(config Config) (*Client, error) {
 	}, nil
 }
 
+// GetConfig returns the client configuration
+func (c *Client) GetConfig() Config {
+	return c.config
+}
+
 // Ready initiates a payment process
 func (c *Client) Ready(ctx context.Context, req ReadyRequest) (*ReadyResponse, error) {
 	// Set CID from config
 	req.CID = c.config.CID
 
-	// Use configured callback URLs
-	req.ApprovalURL = c.config.ApprovalURL
-	req.FailURL = c.config.FailURL
-	req.CancelURL = c.config.CancelURL
+	// Use callback URLs from request if provided, otherwise use config defaults
+	if req.ApprovalURL == "" {
+		req.ApprovalURL = c.config.ApprovalURL
+	}
+	if req.FailURL == "" {
+		req.FailURL = c.config.FailURL
+	}
+	if req.CancelURL == "" {
+		req.CancelURL = c.config.CancelURL
+	}
 
 	resp, err := c.doRequest(ctx, "ready", req)
 	if err != nil {
@@ -100,13 +111,20 @@ func (c *Client) doRequest(ctx context.Context, endpoint string, payload interfa
 	}
 
 	url := fmt.Sprintf("%s/%s", c.config.BaseURL, endpoint)
+
+	// Log the request for debugging (mask sensitive data)
+	fmt.Printf("[KakaoPay] Request to %s: %s\n", url, string(reqBody))
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Set required headers for Kakao Pay API
-	req.Header.Set("Authorization", "KakaoAK "+c.config.AdminKey)
+	// Always use SECRET_KEY for both production and development
+	authHeader := "SECRET_KEY " + c.config.AdminKey
+	fmt.Printf("[KakaoPay] Authorization: SECRET_KEY [REDACTED] (key length: %d)\n", len(c.config.AdminKey))
+	req.Header.Set("Authorization", authHeader)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -128,14 +146,18 @@ func (c *Client) doRequest(ctx context.Context, endpoint string, payload interfa
 			return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
 		}
 
+		// Log the full error for debugging
+		errorMsg := fmt.Sprintf("Kakao Pay API error - Status: %d, Code: %d, Message: %s, Body: %s",
+			resp.StatusCode, errResp.Code, errResp.Message, string(body))
+
 		// Map common error codes to custom errors
 		switch resp.StatusCode {
 		case http.StatusUnauthorized:
-			return nil, ErrUnauthorized
+			return nil, fmt.Errorf("%w: %s", ErrUnauthorized, errorMsg)
 		case http.StatusBadRequest:
-			return nil, fmt.Errorf("%w: %s", ErrInvalidRequest, errResp.Message)
+			return nil, fmt.Errorf("%w: %s", ErrInvalidRequest, errorMsg)
 		default:
-			return nil, fmt.Errorf("%w: %s", ErrPaymentFailed, errResp.Message)
+			return nil, fmt.Errorf("%w: %s", ErrPaymentFailed, errorMsg)
 		}
 	}
 

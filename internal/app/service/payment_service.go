@@ -100,7 +100,7 @@ func (s *paymentService) InitiatePayment(ctx context.Context, userID, orderID ui
 	// Get order with lock to prevent race conditions
 	var order model.Order
 	if err := s.db.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Preload("OrderItems").
+		Preload("OrderItems.Product").
 		Where("id = ? AND user_id = ?", orderID, userID).
 		First(&order).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -128,6 +128,11 @@ func (s *paymentService) InitiatePayment(ctx context.Context, userID, orderID ui
 
 	totalAmountInt := int64(order.TotalAmount)
 
+	// Append order_id to callback URLs so we know which order to process
+	approvalURL := fmt.Sprintf("%s?order_id=%d", s.kakaoClient.GetConfig().ApprovalURL, order.ID)
+	failURL := fmt.Sprintf("%s?order_id=%d", s.kakaoClient.GetConfig().FailURL, order.ID)
+	cancelURL := fmt.Sprintf("%s?order_id=%d", s.kakaoClient.GetConfig().CancelURL, order.ID)
+
 	req := kakaopay.ReadyRequest{
 		PartnerOrderID: fmt.Sprintf("ORDER-%d", order.ID),
 		PartnerUserID:  fmt.Sprintf("USER-%d", userID),
@@ -135,6 +140,9 @@ func (s *paymentService) InitiatePayment(ctx context.Context, userID, orderID ui
 		Quantity:       len(order.OrderItems),
 		TotalAmount:    totalAmountInt,
 		TaxFreeAmount:  0, // Set to 0 for now, can be calculated if needed
+		ApprovalURL:    approvalURL,
+		FailURL:        failURL,
+		CancelURL:      cancelURL,
 	}
 
 	// Call Kakao Pay Ready API
@@ -326,8 +334,20 @@ func (s *paymentService) CancelPayment(ctx context.Context, userID, orderID uint
 	}
 
 	// Update order status
-	order.PaymentStatus = model.PaymentStatusRefunded
-	order.Status = model.OrderStatusCancelled
+	// Only mark as fully refunded if the entire amount is cancelled
+	if float64(resp.CancelAvailableAmount.Total) == 0 {
+		// Full refund - no more amount available to cancel
+		order.PaymentStatus = model.PaymentStatusRefunded
+		order.Status = model.OrderStatusCancelled
+	} else {
+		// Partial refund - keep payment as completed but order might need custom status
+		// For now, we'll keep the order as confirmed but log the partial refund
+		log.Info("Partial refund processed", map[string]interface{}{
+			"order_id":           orderID,
+			"canceled_amount":    cancelAmountInt,
+			"remaining_amount":   resp.CancelAvailableAmount.Total,
+		})
+	}
 
 	if err := tx.Save(&order).Error; err != nil {
 		tx.Rollback()

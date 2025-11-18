@@ -31,6 +31,32 @@ type ReadyResponse struct {
 	CreatedAt             time.Time `json:"created_at"`
 }
 
+// UnmarshalJSON custom unmarshal for ReadyResponse datetime fields
+func (r *ReadyResponse) UnmarshalJSON(data []byte) error {
+	type Alias ReadyResponse
+	aux := &struct {
+		CreatedAt string `json:"created_at"`
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Parse the created_at time format
+	if aux.CreatedAt != "" {
+		createdTime, err := time.Parse("2006-01-02T15:04:05", aux.CreatedAt)
+		if err != nil {
+			return fmt.Errorf("failed to parse created_at: %w", err)
+		}
+		r.CreatedAt = createdTime
+	}
+
+	return nil
+}
+
 // ApproveRequest represents the request parameters for the Approve API
 type ApproveRequest struct {
 	CID            string `json:"cid"`
