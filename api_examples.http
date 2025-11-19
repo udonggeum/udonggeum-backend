@@ -46,6 +46,24 @@ GET {{apiUrl}}/auth/me
 Authorization: Bearer {{accessToken}}
 
 ### ============================================
+### Upload
+### ============================================
+
+### 이미지 업로드
+# 프론트엔드에서는 FormData를 사용하여 'file' 필드에 이미지를 첨부합니다.
+# 응답: { "url": "http://localhost:8080/uploads/UUID.jpg", "filename": "UUID.jpg", "size_bytes": 12345 }
+POST {{apiUrl}}/upload/image
+Authorization: Bearer {{accessToken}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="product.jpg"
+Content-Type: image/jpeg
+
+< ./path/to/your/image.jpg
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### ============================================
 ### Products
 ### ============================================
 

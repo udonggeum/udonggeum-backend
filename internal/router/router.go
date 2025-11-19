@@ -16,6 +16,7 @@ type Router struct {
 	wishlistController *controller.WishlistController
 	addressController  *controller.AddressController
 	sellerController   *controller.SellerController
+	uploadController   *controller.UploadController
 	authMiddleware     *middleware.AuthMiddleware
 	config             *config.Config
 }
@@ -29,6 +30,7 @@ func NewRouter(
 	wishlistController *controller.WishlistController,
 	addressController *controller.AddressController,
 	sellerController *controller.SellerController,
+	uploadController *controller.UploadController,
 	authMiddleware *middleware.AuthMiddleware,
 	cfg *config.Config,
 ) *Router {
@@ -41,6 +43,7 @@ func NewRouter(
 		wishlistController: wishlistController,
 		addressController:  addressController,
 		sellerController:   sellerController,
+		uploadController:   uploadController,
 		authMiddleware:     authMiddleware,
 		config:             cfg,
 	}
@@ -61,6 +64,9 @@ func (r *Router) Setup() *gin.Engine {
 			"message": "UDONGGEUM API is running",
 		})
 	})
+
+	// Serve static files from uploads directory
+	router.Static("/uploads", "./uploads")
 
 	v1 := router.Group("/api/v1")
 	{
@@ -169,6 +175,12 @@ func (r *Router) Setup() *gin.Engine {
 			seller.GET("/dashboard", r.sellerController.GetDashboard)
 			seller.GET("/stores/:store_id/orders", r.sellerController.GetStoreOrders)
 			seller.PUT("/orders/:id/status", r.sellerController.UpdateOrderStatus)
+		}
+
+		upload := v1.Group("/upload")
+		upload.Use(r.authMiddleware.Authenticate())
+		{
+			upload.POST("/image", r.uploadController.UploadImage)
 		}
 	}
 

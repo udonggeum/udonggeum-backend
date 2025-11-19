@@ -11,6 +11,7 @@
 ## 주요 기능
 
 - 사용자 인증 (회원가입/로그인) - JWT 기반
+- 파일 업로드 (이미지)
 - 상품 관리 (CRUD)
 - 장바구니 관리
 - 주문 처리
@@ -191,6 +192,39 @@ Content-Type: application/json
 ```http
 GET /api/v1/auth/me
 Authorization: Bearer {access_token}
+```
+
+### 파일 업로드 (Upload)
+
+#### 이미지 업로드
+```http
+POST /api/v1/upload/image
+Authorization: Bearer {access_token}
+Content-Type: multipart/form-data
+
+file: [이미지 파일]
+```
+
+응답:
+```json
+{
+  "message": "File uploaded successfully",
+  "url": "http://localhost:8080/uploads/21c19f6f-0483-4e00-bbce-e2e94c0631f4.jpg",
+  "filename": "21c19f6f-0483-4e00-bbce-e2e94c0631f4.jpg",
+  "size_bytes": 1683987
+}
+```
+
+**제약사항:**
+- 지원 파일 형식: JPG, JPEG, PNG, GIF, WEBP
+- 최대 파일 크기: 5MB
+- 인증 필요 (Bearer Token)
+
+**사용 예시 (curl):**
+```bash
+curl -X POST http://localhost:8080/api/v1/upload/image \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -F "file=@/path/to/image.jpg"
 ```
 
 ### 상품 (Products)

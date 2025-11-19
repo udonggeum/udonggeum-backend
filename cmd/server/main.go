@@ -92,6 +92,7 @@ func main() {
 	wishlistController := controller.NewWishlistController(wishlistService)
 	addressController := controller.NewAddressController(addressService)
 	sellerController := controller.NewSellerController(sellerService, storeService)
+	uploadController := controller.NewUploadController("./uploads", fmt.Sprintf("http://localhost:%s", cfg.Server.Port))
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
@@ -104,6 +105,7 @@ func main() {
 		wishlistController,
 		addressController,
 		sellerController,
+		uploadController,
 		authMiddleware,
 		cfg,
 	)
