@@ -15,6 +15,7 @@ type Config struct {
 	JWT      JWTConfig
 	CORS     CORSConfig
 	Payment  PaymentConfig
+	S3       S3Config
 }
 
 type ServerConfig struct {
@@ -45,6 +46,14 @@ type CORSConfig struct {
 type PaymentConfig struct {
 	GatewayURL string
 	APIKey     string
+}
+
+type S3Config struct {
+	Region          string
+	Bucket          string
+	AccessKeyID     string
+	SecretAccessKey string
+	BaseURL         string // CloudFront or S3 direct URL
 }
 
 func Load() (*Config, error) {
@@ -78,6 +87,13 @@ func Load() (*Config, error) {
 		Payment: PaymentConfig{
 			GatewayURL: getEnv("PAYMENT_GATEWAY_URL", "https://api.payment-mock.com"),
 			APIKey:     getEnv("PAYMENT_API_KEY", "mock-api-key"),
+		},
+		S3: S3Config{
+			Region:          getEnv("AWS_REGION", "ap-northeast-2"),
+			Bucket:          getEnv("AWS_S3_BUCKET", "udonggeum-uploads"),
+			AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
+			SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
+			BaseURL:         getEnv("AWS_S3_BASE_URL", ""),
 		},
 	}
 

@@ -1,50 +1,49 @@
 package controller
 
 import (
-	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
+	"github.com/ikkim/udonggeum-backend/internal/storage"
 )
 
 type UploadController struct {
-	uploadDir string
-	baseURL   string
+	s3Storage *storage.S3Storage
 }
 
-func NewUploadController(uploadDir, baseURL string) *UploadController {
+func NewUploadController(s3Storage *storage.S3Storage) *UploadController {
 	return &UploadController{
-		uploadDir: uploadDir,
-		baseURL:   baseURL,
+		s3Storage: s3Storage,
 	}
 }
 
-// UploadImage handles image file uploads
-func (ctrl *UploadController) UploadImage(c *gin.Context) {
+type GeneratePresignedURLRequest struct {
+	Filename    string `json:"filename" binding:"required"`
+	ContentType string `json:"content_type" binding:"required"`
+	FileSize    int64  `json:"file_size" binding:"required"`
+}
+
+// GeneratePresignedURL generates a pre-signed URL for direct S3 upload
+func (ctrl *UploadController) GeneratePresignedURL(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 
-	// Get file from form
-	file, err := c.FormFile("file")
-	if err != nil {
-		log.Warn("No file in request", map[string]interface{}{
+	var req GeneratePresignedURLRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid request body", map[string]interface{}{
 			"error": err.Error(),
 		})
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "No file provided",
+			"error": "Invalid request body",
 		})
 		return
 	}
 
 	// Validate file size (max 5MB)
 	const maxFileSize = 5 * 1024 * 1024
-	if file.Size > maxFileSize {
-		log.Warn("File too large", map[string]interface{}{
-			"size":     file.Size,
+	if err := ctrl.s3Storage.ValidateFileSize(req.FileSize, maxFileSize); err != nil {
+		log.Warn("File size validation failed", map[string]interface{}{
+			"size":     req.FileSize,
 			"max_size": maxFileSize,
 		})
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -53,67 +52,43 @@ func (ctrl *UploadController) UploadImage(c *gin.Context) {
 		return
 	}
 
-	// Validate file extension
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	allowedExts := map[string]bool{
-		".jpg":  true,
-		".jpeg": true,
-		".png":  true,
-		".gif":  true,
-		".webp": true,
+	// Validate content type
+	allowedTypes := []string{
+		"image/jpeg",
+		"image/png",
+		"image/gif",
+		"image/webp",
 	}
-
-	if !allowedExts[ext] {
-		log.Warn("Invalid file type", map[string]interface{}{
-			"filename":  file.Filename,
-			"extension": ext,
+	if err := ctrl.s3Storage.ValidateContentType(req.ContentType, allowedTypes); err != nil {
+		log.Warn("Content type validation failed", map[string]interface{}{
+			"content_type": req.ContentType,
 		})
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Only image files (jpg, jpeg, png, gif, webp) are allowed",
+			"error": "Only image files (jpeg, png, gif, webp) are allowed",
 		})
 		return
 	}
 
-	// Generate unique filename
-	filename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-	filepath := filepath.Join(ctrl.uploadDir, filename)
-
-	// Ensure upload directory exists
-	if err := os.MkdirAll(ctrl.uploadDir, 0755); err != nil {
-		log.Error("Failed to create upload directory", err, map[string]interface{}{
-			"dir": ctrl.uploadDir,
+	// Generate presigned URL
+	result, err := ctrl.s3Storage.GeneratePresignedURL(req.Filename, req.ContentType)
+	if err != nil {
+		log.Error("Failed to generate presigned URL", err, map[string]interface{}{
+			"filename": req.Filename,
 		})
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to save file",
+			"error": "Failed to generate upload URL",
 		})
 		return
 	}
 
-	// Save file
-	if err := c.SaveUploadedFile(file, filepath); err != nil {
-		log.Error("Failed to save uploaded file", err, map[string]interface{}{
-			"filename": filename,
-		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to save file",
-		})
-		return
-	}
-
-	// Generate URL
-	fileURL := fmt.Sprintf("%s/uploads/%s", ctrl.baseURL, filename)
-
-	log.Info("File uploaded successfully", map[string]interface{}{
-		"filename":     filename,
-		"original":     file.Filename,
-		"size":         file.Size,
-		"url":          fileURL,
+	log.Info("Presigned URL generated successfully", map[string]interface{}{
+		"filename": req.Filename,
+		"key":      result.Key,
 	})
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":    "File uploaded successfully",
-		"url":        fileURL,
-		"filename":   filename,
-		"size_bytes": file.Size,
+		"upload_url": result.UploadURL,
+		"file_url":   result.FileURL,
+		"key":        result.Key,
 	})
 }

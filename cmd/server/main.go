@@ -13,6 +13,7 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/db"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
 	"github.com/ikkim/udonggeum-backend/internal/router"
+	"github.com/ikkim/udonggeum-backend/internal/storage"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 )
 
@@ -92,7 +93,15 @@ func main() {
 	wishlistController := controller.NewWishlistController(wishlistService)
 	addressController := controller.NewAddressController(addressService)
 	sellerController := controller.NewSellerController(sellerService, storeService)
-	uploadController := controller.NewUploadController("./uploads", fmt.Sprintf("http://localhost:%s", cfg.Server.Port))
+
+	s3Storage := storage.NewS3Storage(
+		cfg.S3.Region,
+		cfg.S3.Bucket,
+		cfg.S3.AccessKeyID,
+		cfg.S3.SecretAccessKey,
+		cfg.S3.BaseURL,
+	)
+	uploadController := controller.NewUploadController(s3Storage)
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 

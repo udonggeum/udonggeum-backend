@@ -46,22 +46,30 @@ GET {{apiUrl}}/auth/me
 Authorization: Bearer {{accessToken}}
 
 ### ============================================
-### Upload
+### Upload (S3 Pre-signed URL)
 ### ============================================
 
-### 이미지 업로드
-# 프론트엔드에서는 FormData를 사용하여 'file' 필드에 이미지를 첨부합니다.
-# 응답: { "url": "http://localhost:8080/uploads/UUID.jpg", "filename": "UUID.jpg", "size_bytes": 12345 }
-POST {{apiUrl}}/upload/image
+### Step 1: Pre-signed URL 생성
+# 서버에서 S3 업로드용 Pre-signed URL 받기
+# 응답: { "upload_url": "https://s3...", "file_url": "https://cdn.../uploads/UUID.jpg", "key": "uploads/UUID.jpg" }
+POST {{apiUrl}}/upload/presigned-url
 Authorization: Bearer {{accessToken}}
-Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Type: application/json
 
-------WebKitFormBoundary7MA4YWxkTrZu0gW
-Content-Disposition: form-data; name="file"; filename="product.jpg"
-Content-Type: image/jpeg
+{
+  "filename": "product.jpg",
+  "content_type": "image/jpeg",
+  "file_size": 102400
+}
 
-< ./path/to/your/image.jpg
-------WebKitFormBoundary7MA4YWxkTrZu0gW--
+### Step 2: S3에 직접 업로드 (클라이언트)
+# 위에서 받은 upload_url을 사용
+# PUT {{upload_url}}
+# Content-Type: image/jpeg
+# Body: [파일 바이너리 데이터]
+
+### Step 3: 상품 등록 시 file_url 사용
+# 위에서 받은 file_url을 product의 image_url 필드에 사용
 
 ### ============================================
 ### Products

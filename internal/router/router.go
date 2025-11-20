@@ -65,9 +65,6 @@ func (r *Router) Setup() *gin.Engine {
 		})
 	})
 
-	// Serve static files from uploads directory
-	router.Static("/uploads", "./uploads")
-
 	v1 := router.Group("/api/v1")
 	{
 		auth := v1.Group("/auth")
@@ -180,7 +177,7 @@ func (r *Router) Setup() *gin.Engine {
 		upload := v1.Group("/upload")
 		upload.Use(r.authMiddleware.Authenticate())
 		{
-			upload.POST("/image", r.uploadController.UploadImage)
+			upload.POST("/presigned-url", r.uploadController.GeneratePresignedURL)
 		}
 	}
 
