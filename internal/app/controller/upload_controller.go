@@ -22,6 +22,7 @@ type GeneratePresignedURLRequest struct {
 	Filename    string `json:"filename" binding:"required"`
 	ContentType string `json:"content_type" binding:"required"`
 	FileSize    int64  `json:"file_size" binding:"required"`
+	UploadType  string `json:"upload_type" binding:"required,oneof=store product"` // "store" or "product"
 }
 
 // GeneratePresignedURL generates a pre-signed URL for direct S3 upload
@@ -69,11 +70,21 @@ func (ctrl *UploadController) GeneratePresignedURL(c *gin.Context) {
 		return
 	}
 
+	// Determine folder based on upload type
+	var folder string
+	switch req.UploadType {
+	case "store":
+		folder = "stores"
+	case "product":
+		folder = "products"
+	}
+
 	// Generate presigned URL
-	result, err := ctrl.s3Storage.GeneratePresignedURL(req.Filename, req.ContentType)
+	result, err := ctrl.s3Storage.GeneratePresignedURLWithFolder(req.Filename, req.ContentType, folder)
 	if err != nil {
 		log.Error("Failed to generate presigned URL", err, map[string]interface{}{
-			"filename": req.Filename,
+			"filename":    req.Filename,
+			"upload_type": req.UploadType,
 		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to generate upload URL",
@@ -82,8 +93,9 @@ func (ctrl *UploadController) GeneratePresignedURL(c *gin.Context) {
 	}
 
 	log.Info("Presigned URL generated successfully", map[string]interface{}{
-		"filename": req.Filename,
-		"key":      result.Key,
+		"filename":    req.Filename,
+		"upload_type": req.UploadType,
+		"key":         result.Key,
 	})
 
 	c.JSON(http.StatusOK, gin.H{
