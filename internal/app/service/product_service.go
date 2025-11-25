@@ -22,6 +22,8 @@ const (
 	ProductSortPrice      ProductSort = "price"
 	ProductSortCreatedAt  ProductSort = "created_at"
 	ProductSortPopularity ProductSort = "popularity"
+	ProductSortWishlist   ProductSort = "wishlist"
+	ProductSortViewCount  ProductSort = "view_count"
 )
 
 type ProductListOptions struct {
@@ -33,7 +35,6 @@ type ProductListOptions struct {
 	Search         string
 	Sort           ProductSort
 	SortAscending  bool
-	PopularOnly    bool
 	Limit          int
 	Offset         int
 	IncludeOptions bool
@@ -48,7 +49,7 @@ type ProductService interface {
 	ListProducts(opts ProductListOptions) ([]model.Product, error)
 	GetProductByID(id uint) (*model.Product, error)
 	GetProductsByCategory(category model.ProductCategory) ([]model.Product, error)
-	GetPopularProducts(category model.ProductCategory, region, district string, limit int) ([]model.Product, error)
+	GetPopularProducts(category *model.ProductCategory, region, district string, limit int) ([]model.Product, error)
 	GetAvailableFilters() (ProductFilterSummary, error)
 	CreateProduct(product *model.Product) error
 	UpdateProduct(userID uint, product *model.Product) error
@@ -91,7 +92,6 @@ func (s *productService) ListProducts(opts ProductListOptions) ([]model.Product,
 		Search:         opts.Search,
 		Material:       opts.Material,
 		SortAscending:  opts.SortAscending,
-		PopularOnly:    opts.PopularOnly,
 		Limit:          opts.Limit,
 		Offset:         opts.Offset,
 		IncludeOptions: opts.IncludeOptions,
@@ -102,6 +102,10 @@ func (s *productService) ListProducts(opts ProductListOptions) ([]model.Product,
 		filter.SortBy = repository.ProductSortPrice
 	case ProductSortCreatedAt:
 		filter.SortBy = repository.ProductSortCreatedAt
+	case ProductSortWishlist:
+		filter.SortBy = repository.ProductSortWishlist
+	case ProductSortViewCount:
+		filter.SortBy = repository.ProductSortViewCount
 	case ProductSortPopularity:
 		fallthrough
 	default:
@@ -142,6 +146,17 @@ func (s *productService) GetProductByID(id uint) (*model.Product, error) {
 		})
 		return nil, err
 	}
+
+	// Increment view count asynchronously (don't block on errors)
+	go func() {
+		if err := s.productRepo.IncrementViewCount(id); err != nil {
+			logger.Warn("Failed to increment view count", map[string]interface{}{
+				"product_id": id,
+				"error":      err.Error(),
+			})
+		}
+	}()
+
 	return product, nil
 }
 
@@ -165,7 +180,7 @@ func (s *productService) GetProductsByCategory(category model.ProductCategory) (
 	return products, nil
 }
 
-func (s *productService) GetPopularProducts(category model.ProductCategory, region, district string, limit int) ([]model.Product, error) {
+func (s *productService) GetPopularProducts(category *model.ProductCategory, region, district string, limit int) ([]model.Product, error) {
 	logger.Debug("Fetching popular products", map[string]interface{}{
 		"category": category,
 		"region":   region,

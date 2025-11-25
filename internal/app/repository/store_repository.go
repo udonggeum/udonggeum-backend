@@ -25,6 +25,7 @@ type StoreRepository interface {
 	Delete(id uint) error
 	FindAll(filter StoreFilter) ([]model.Store, error)
 	FindByID(id uint, includeProducts bool) (*model.Store, error)
+	FindByUserID(userID uint) ([]model.Store, error)
 	ListLocations() ([]StoreLocation, error)
 }
 
@@ -135,8 +136,8 @@ func (r *storeRepository) FindAll(filter StoreFilter) ([]model.Store, error) {
 		return nil, err
 	}
 
-	if err := r.populateCategoryCounts(&stores); err != nil {
-		logger.Error("Failed to populate category counts for stores", err, nil)
+	if err := r.populateStoreStats(&stores); err != nil {
+		logger.Error("Failed to populate store stats", err, nil)
 		return nil, err
 	}
 
@@ -166,11 +167,50 @@ func (r *storeRepository) FindByID(id uint, includeProducts bool) (*model.Store,
 		return nil, err
 	}
 
+	// Populate category counts and total products
+	stores := []model.Store{store}
+	if err := r.populateStoreStats(&stores); err != nil {
+		logger.Error("Failed to populate store stats", err, map[string]interface{}{
+			"store_id": id,
+		})
+		return nil, err
+	}
+	store = stores[0]
+
 	logger.Debug("Store found", map[string]interface{}{
 		"store_id": store.ID,
 		"name":     store.Name,
 	})
 	return &store, nil
+}
+
+func (r *storeRepository) FindByUserID(userID uint) ([]model.Store, error) {
+	logger.Debug("Finding stores by user ID in database", map[string]interface{}{
+		"user_id": userID,
+	})
+
+	var stores []model.Store
+	if err := r.db.Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Find(&stores).Error; err != nil {
+		logger.Error("Failed to find stores by user ID in database", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, err
+	}
+
+	if err := r.populateStoreStats(&stores); err != nil {
+		logger.Error("Failed to populate store stats for user stores", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, err
+	}
+
+	logger.Debug("Stores found by user ID in database", map[string]interface{}{
+		"user_id": userID,
+		"count":   len(stores),
+	})
+	return stores, nil
 }
 
 func (r *storeRepository) ListLocations() ([]StoreLocation, error) {
@@ -192,7 +232,7 @@ func (r *storeRepository) ListLocations() ([]StoreLocation, error) {
 	return locations, nil
 }
 
-func (r *storeRepository) populateCategoryCounts(stores *[]model.Store) error {
+func (r *storeRepository) populateStoreStats(stores *[]model.Store) error {
 	if len(*stores) == 0 {
 		return nil
 	}
@@ -203,9 +243,11 @@ func (r *storeRepository) populateCategoryCounts(stores *[]model.Store) error {
 		store := &(*stores)[i]
 		storeIDs[i] = store.ID
 		store.CategoryCounts = initializeCategoryCounts()
+		store.TotalProducts = 0
 		storeIndex[store.ID] = store
 	}
 
+	// Get category counts
 	type categoryCountRow struct {
 		StoreID  uint
 		Category model.ProductCategory
@@ -224,6 +266,7 @@ func (r *storeRepository) populateCategoryCounts(stores *[]model.Store) error {
 	for _, row := range rows {
 		if store, ok := storeIndex[row.StoreID]; ok {
 			store.CategoryCounts[row.Category] = int(row.Count)
+			store.TotalProducts += int(row.Count)
 		}
 	}
 	return nil

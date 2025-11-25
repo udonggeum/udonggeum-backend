@@ -8,14 +8,18 @@ import (
 )
 
 type Router struct {
-	authController    *controller.AuthController
-	storeController   *controller.StoreController
-	productController *controller.ProductController
-	cartController    *controller.CartController
-	orderController   *controller.OrderController
-	paymentController *controller.PaymentController
-	authMiddleware    *middleware.AuthMiddleware
-	config            *config.Config
+	authController     *controller.AuthController
+	storeController    *controller.StoreController
+	productController  *controller.ProductController
+	cartController     *controller.CartController
+	orderController    *controller.OrderController
+	paymentController  *controller.PaymentController
+	wishlistController *controller.WishlistController
+	addressController  *controller.AddressController
+	sellerController   *controller.SellerController
+	uploadController   *controller.UploadController
+	authMiddleware     *middleware.AuthMiddleware
+	config             *config.Config
 }
 
 func NewRouter(
@@ -25,18 +29,26 @@ func NewRouter(
 	cartController *controller.CartController,
 	orderController *controller.OrderController,
 	paymentController *controller.PaymentController,
+	wishlistController *controller.WishlistController,
+	addressController *controller.AddressController,
+	sellerController *controller.SellerController,
+	uploadController *controller.UploadController,
 	authMiddleware *middleware.AuthMiddleware,
 	cfg *config.Config,
 ) *Router {
 	return &Router{
-		authController:    authController,
-		storeController:   storeController,
-		productController: productController,
-		cartController:    cartController,
-		orderController:   orderController,
-		paymentController: paymentController,
-		authMiddleware:    authMiddleware,
-		config:            cfg,
+		authController:     authController,
+		storeController:    storeController,
+		productController:  productController,
+		cartController:     cartController,
+		orderController:    orderController,
+		paymentController:  paymentController,
+		wishlistController: wishlistController,
+		addressController:  addressController,
+		sellerController:   sellerController,
+		uploadController:   uploadController,
+		authMiddleware:     authMiddleware,
+		config:             cfg,
 	}
 }
 
@@ -62,7 +74,10 @@ func (r *Router) Setup() *gin.Engine {
 		{
 			auth.POST("/register", r.authController.Register)
 			auth.POST("/login", r.authController.Login)
+			auth.POST("/forgot-password", r.authController.ForgotPassword)
+			auth.POST("/reset-password", r.authController.ResetPassword)
 			auth.GET("/me", r.authMiddleware.Authenticate(), r.authController.GetMe)
+			auth.PUT("/me", r.authMiddleware.Authenticate(), r.authController.UpdateMe)
 		}
 
 		stores := v1.Group("/stores")
@@ -72,17 +87,17 @@ func (r *Router) Setup() *gin.Engine {
 			stores.GET("/:id", r.storeController.GetStoreByID)
 			stores.POST("",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.storeController.CreateStore,
 			)
 			stores.PUT("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.storeController.UpdateStore,
 			)
 			stores.DELETE("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.storeController.DeleteStore,
 			)
 		}
@@ -96,17 +111,17 @@ func (r *Router) Setup() *gin.Engine {
 
 			products.POST("",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.productController.CreateProduct,
 			)
 			products.PUT("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.productController.UpdateProduct,
 			)
 			products.DELETE("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("seller", "admin"),
 				r.productController.DeleteProduct,
 			)
 		}
@@ -159,6 +174,39 @@ func (r *Router) Setup() *gin.Engine {
 				kakao.GET("/fail", r.paymentController.PaymentFail)
 				kakao.GET("/cancel", r.paymentController.PaymentCancel)
 			}
+		}
+
+		wishlist := v1.Group("/wishlist")
+		wishlist.Use(r.authMiddleware.Authenticate())
+		{
+			wishlist.GET("", r.wishlistController.GetWishlist)
+			wishlist.POST("", r.wishlistController.AddToWishlist)
+			wishlist.DELETE("/:product_id", r.wishlistController.RemoveFromWishlist)
+		}
+
+		addresses := v1.Group("/addresses")
+		addresses.Use(r.authMiddleware.Authenticate())
+		{
+			addresses.GET("", r.addressController.ListAddresses)
+			addresses.POST("", r.addressController.CreateAddress)
+			addresses.PUT("/:id", r.addressController.UpdateAddress)
+			addresses.DELETE("/:id", r.addressController.DeleteAddress)
+			addresses.PUT("/:id/default", r.addressController.SetDefaultAddress)
+		}
+
+		seller := v1.Group("/seller")
+		seller.Use(r.authMiddleware.Authenticate())
+		{
+			seller.GET("/stores", r.sellerController.ListMyStores)
+			seller.GET("/dashboard", r.sellerController.GetDashboard)
+			seller.GET("/stores/:store_id/orders", r.sellerController.GetStoreOrders)
+			seller.PUT("/orders/:id/status", r.sellerController.UpdateOrderStatus)
+		}
+
+		upload := v1.Group("/upload")
+		upload.Use(r.authMiddleware.Authenticate())
+		{
+			upload.POST("/presigned-url", r.uploadController.GeneratePresignedURL)
 		}
 	}
 

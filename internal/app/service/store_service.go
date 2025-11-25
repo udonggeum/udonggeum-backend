@@ -30,6 +30,7 @@ type StoreLocationSummary struct {
 type StoreService interface {
 	ListStores(opts StoreListOptions) ([]model.Store, error)
 	GetStoreByID(id uint, includeProducts bool) (*model.Store, error)
+	GetStoresByUserID(userID uint) ([]model.Store, error)
 	ListLocations() ([]StoreLocationSummary, error)
 	CreateStore(store *model.Store) (*model.Store, error)
 	UpdateStore(userID uint, storeID uint, input StoreMutation) (*model.Store, error)
@@ -48,6 +49,8 @@ type StoreMutation struct {
 	PhoneNumber string
 	ImageURL    string
 	Description string
+	OpenTime    string
+	CloseTime   string
 }
 
 func NewStoreService(storeRepo repository.StoreRepository) StoreService {
@@ -97,6 +100,26 @@ func (s *storeService) GetStoreByID(id uint, includeProducts bool) (*model.Store
 	}
 
 	return store, nil
+}
+
+func (s *storeService) GetStoresByUserID(userID uint) ([]model.Store, error) {
+	logger.Debug("Fetching stores by user ID", map[string]interface{}{
+		"user_id": userID,
+	})
+
+	stores, err := s.storeRepo.FindByUserID(userID)
+	if err != nil {
+		logger.Error("Failed to fetch stores by user ID", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, err
+	}
+
+	logger.Info("Stores fetched by user ID", map[string]interface{}{
+		"user_id": userID,
+		"count":   len(stores),
+	})
+	return stores, nil
 }
 
 func (s *storeService) CreateStore(store *model.Store) (*model.Store, error) {
@@ -155,6 +178,8 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 	existing.PhoneNumber = input.PhoneNumber
 	existing.ImageURL = input.ImageURL
 	existing.Description = input.Description
+	existing.OpenTime = input.OpenTime
+	existing.CloseTime = input.CloseTime
 
 	if err := s.storeRepo.Update(existing); err != nil {
 		logger.Error("Failed to update store", err, map[string]interface{}{

@@ -203,8 +203,7 @@
 - `material` *(enum: 금|은|기타)*
 - `store_id` *(number)*
 - `search` *(string)* : 이름/설명 검색
-- `sort` *(string)* : `popularity`(default) / `price_asc` / `price_desc` / `latest`
-- `popular_only` *(bool)*
+- `sort` *(string)* : `popularity`(default, 찜수 x 조회수) / `price_asc` / `price_desc` / `latest` / `wishlist` / `views` (각 `_asc`, `_desc` 변형 지원)
 - `include_options` *(bool)*
 - `page`, `page_size` *(number)* : 페이지네이션
 
@@ -222,7 +221,7 @@
       "category": "반지",
       "material": "금",
       "stock_quantity": 12,
-      "popularity_score": 92,
+      "wishlist_count": 4,
       "store": {
         "id": 1,
         "name": "강동 우동금 주얼리"
@@ -249,6 +248,8 @@
 ### 인기 상품
 `GET /api/v1/products/popular?category=반지&region=서울특별시&district=강동구&limit=4`
 
+- `category`는 선택 사항이며, 생략하면 전체 카테고리에서 찜수 x 조회수 기준 상위 상품을 반환합니다.
+
 ### 상품 상세
 `GET /api/v1/products/:id`
 
@@ -266,7 +267,7 @@
 | `material` | string | Y | `금`, `은`, `기타` |
 | `store_id` | number | Y* | 상품을 보유한 매장 (생성 시 필수) |
 | `stock_quantity` | number | N | 기본값 0 |
-| `description`, `weight`, `purity`, `image_url`, `popularity_score` | optional |
+| `description`, `weight`, `purity`, `image_url` | optional |
 
 - **권한 규칙**
   - 상품 생성은 본인이 소유한 매장(`stores.user_id = token user`)에 대해서만 가능합니다.

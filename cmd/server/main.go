@@ -13,6 +13,7 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/db"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
 	"github.com/ikkim/udonggeum-backend/internal/router"
+	"github.com/ikkim/udonggeum-backend/internal/storage"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 )
 
@@ -65,6 +66,9 @@ func main() {
 	productOptionRepo := repository.NewProductOptionRepository(dbConn)
 	orderRepo := repository.NewOrderRepository(dbConn)
 	cartRepo := repository.NewCartRepository(dbConn)
+	wishlistRepo := repository.NewWishlistRepository(dbConn)
+	addressRepo := repository.NewAddressRepository(dbConn)
+	passwordResetRepo := repository.NewPasswordResetRepository(dbConn)
 
 	authService := service.NewAuthService(
 		userRepo,
@@ -72,6 +76,7 @@ func main() {
 		cfg.JWT.AccessTokenExpiry,
 		cfg.JWT.RefreshTokenExpiry,
 	)
+	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
 	storeService := service.NewStoreService(storeRepo)
 	productService := service.NewProductService(productRepo, productOptionRepo)
 	cartService := service.NewCartService(cartRepo, productRepo, productOptionRepo)
@@ -81,13 +86,28 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to initialize payment service", err)
 	}
+	wishlistService := service.NewWishlistService(wishlistRepo, productRepo)
+	addressService := service.NewAddressService(addressRepo)
+	sellerService := service.NewSellerService(orderRepo, storeRepo)
 
-	authController := controller.NewAuthController(authService)
+	authController := controller.NewAuthController(authService, passwordResetService)
 	storeController := controller.NewStoreController(storeService)
 	productController := controller.NewProductController(productService)
 	cartController := controller.NewCartController(cartService)
 	orderController := controller.NewOrderController(orderService)
 	paymentController := controller.NewPaymentController(paymentService)
+	wishlistController := controller.NewWishlistController(wishlistService)
+	addressController := controller.NewAddressController(addressService)
+	sellerController := controller.NewSellerController(sellerService, storeService)
+
+	s3Storage := storage.NewS3Storage(
+		cfg.S3.Region,
+		cfg.S3.Bucket,
+		cfg.S3.AccessKeyID,
+		cfg.S3.SecretAccessKey,
+		cfg.S3.BaseURL,
+	)
+	uploadController := controller.NewUploadController(s3Storage)
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
@@ -98,6 +118,10 @@ func main() {
 		cartController,
 		orderController,
 		paymentController,
+		wishlistController,
+		addressController,
+		sellerController,
+		uploadController,
 		authMiddleware,
 		cfg,
 	)

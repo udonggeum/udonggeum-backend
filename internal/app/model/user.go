@@ -9,8 +9,9 @@ import (
 type UserRole string // 사용자 권한 타입
 
 const (
-	RoleUser  UserRole = "user"  // 일반 사용자 권한
-	RoleAdmin UserRole = "admin" // 관리자 권한
+	RoleUser   UserRole = "user"   // 일반 사용자 권한
+	RoleSeller UserRole = "seller" // 판매자 권한
+	RoleAdmin  UserRole = "admin"  // 관리자 권한
 )
 
 type User struct {

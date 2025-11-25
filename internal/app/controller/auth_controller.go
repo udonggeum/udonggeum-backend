@@ -10,12 +10,14 @@ import (
 )
 
 type AuthController struct {
-	authService service.AuthService
+	authService          service.AuthService
+	passwordResetService service.PasswordResetService
 }
 
-func NewAuthController(authService service.AuthService) *AuthController {
+func NewAuthController(authService service.AuthService, passwordResetService service.PasswordResetService) *AuthController {
 	return &AuthController{
-		authService: authService,
+		authService:          authService,
+		passwordResetService: passwordResetService,
 	}
 }
 
@@ -29,6 +31,20 @@ type RegisterRequest struct {
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
+}
+
+type UpdateProfileRequest struct {
+	Name  string `json:"name"`
+	Phone string `json:"phone"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type ResetPasswordRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"`
 }
 
 // Register handles user registration
@@ -196,5 +212,159 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 			"phone": user.Phone,
 			"role":  user.Role,
 		},
+	})
+}
+
+// UpdateMe updates current user's profile
+// PUT /api/v1/auth/me
+func (ctrl *AuthController) UpdateMe(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		log.Warn("Unauthorized access to UpdateMe endpoint", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not authenticated",
+		})
+		return
+	}
+
+	var req UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid update profile request", map[string]interface{}{
+			"user_id": userID,
+			"error":   err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	log.Debug("Processing profile update", map[string]interface{}{
+		"user_id": userID,
+		"name":    req.Name,
+	})
+
+	user, err := ctrl.authService.UpdateProfile(userID, req.Name, req.Phone)
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			log.Warn("User not found for profile update", map[string]interface{}{
+				"user_id": userID,
+			})
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "User not found",
+			})
+			return
+		}
+		log.Error("Failed to update user profile", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to update user profile",
+		})
+		return
+	}
+
+	log.Info("User profile updated successfully", map[string]interface{}{
+		"user_id": user.ID,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Profile updated successfully",
+		"user": gin.H{
+			"id":    user.ID,
+			"email": user.Email,
+			"name":  user.Name,
+			"phone": user.Phone,
+			"role":  user.Role,
+		},
+	})
+}
+
+// ForgotPassword handles password reset requests
+// POST /api/v1/auth/forgot-password
+func (ctrl *AuthController) ForgotPassword(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid forgot password request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	log.Debug("Processing forgot password request", map[string]interface{}{
+		"email": req.Email,
+	})
+
+	if err := ctrl.passwordResetService.RequestReset(req.Email); err != nil {
+		log.Error("Failed to process password reset request", err, map[string]interface{}{
+			"email": req.Email,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to process password reset request",
+		})
+		return
+	}
+
+	// Always return success to prevent user enumeration
+	log.Info("Password reset request processed", map[string]interface{}{
+		"email": req.Email,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "If the email exists, a password reset link has been sent",
+	})
+}
+
+// ResetPassword handles password reset with token
+// POST /api/v1/auth/reset-password
+func (ctrl *AuthController) ResetPassword(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid reset password request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	log.Debug("Processing password reset with token")
+
+	if err := ctrl.passwordResetService.ResetPassword(req.Token, req.NewPassword); err != nil {
+		if errors.Is(err, service.ErrInvalidResetToken) ||
+			errors.Is(err, service.ErrResetTokenExpired) ||
+			errors.Is(err, service.ErrResetTokenUsed) {
+			log.Warn("Password reset failed: invalid or expired token", map[string]interface{}{
+				"error": err.Error(),
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+		log.Error("Failed to reset password", err, nil)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to reset password",
+		})
+		return
+	}
+
+	log.Info("Password reset successful")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Password reset successful",
 	})
 }

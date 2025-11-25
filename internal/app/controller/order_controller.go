@@ -21,7 +21,14 @@ func NewOrderController(orderService service.OrderService) *OrderController {
 	}
 }
 
+type OrderItemInput struct {
+	ProductID       uint  `json:"product_id" binding:"required"`
+	Quantity        int   `json:"quantity" binding:"required,min=1"`
+	ProductOptionID *uint `json:"product_option_id"`
+}
+
 type CreateOrderRequest struct {
+	Items           []OrderItemInput      `json:"items"`
 	ShippingAddress string                `json:"shipping_address"`
 	FulfillmentType model.FulfillmentType `json:"fulfillment_type"`
 	PickupStoreID   *uint                 `json:"pickup_store_id"`
@@ -158,13 +165,32 @@ func (ctrl *OrderController) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	log.Debug("Creating order from cart", map[string]interface{}{
+	log.Debug("Creating order", map[string]interface{}{
 		"user_id":          userID,
 		"fulfillment_type": req.FulfillmentType,
 		"pickup_store_id":  req.PickupStoreID,
+		"has_items":        len(req.Items) > 0,
 	})
 
-	order, err := ctrl.orderService.CreateOrderFromCart(userID, req.ShippingAddress, req.FulfillmentType, req.PickupStoreID)
+	var order *model.Order
+	var err error
+
+	// 직접 주문 (items가 있는 경우) 또는 장바구니 주문
+	if len(req.Items) > 0 {
+		// Convert controller input to service input
+		items := make([]service.OrderItemInput, len(req.Items))
+		for i, item := range req.Items {
+			items[i] = service.OrderItemInput{
+				ProductID:       item.ProductID,
+				Quantity:        item.Quantity,
+				ProductOptionID: item.ProductOptionID,
+			}
+		}
+		order, err = ctrl.orderService.CreateOrder(userID, items, req.ShippingAddress, req.FulfillmentType, req.PickupStoreID)
+	} else {
+		// 장바구니에서 주문 생성 (기존 로직)
+		order, err = ctrl.orderService.CreateOrderFromCart(userID, req.ShippingAddress, req.FulfillmentType, req.PickupStoreID)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrEmptyCart):

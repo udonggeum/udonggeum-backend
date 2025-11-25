@@ -21,17 +21,28 @@ func NewProductController(productService service.ProductService) *ProductControl
 }
 
 type CreateProductRequest struct {
-	Name            string                `json:"name" binding:"required"`
-	Description     string                `json:"description"`
-	Price           float64               `json:"price" binding:"required,gt=0"`
-	Weight          float64               `json:"weight"`
-	Purity          string                `json:"purity"`
-	Category        model.ProductCategory `json:"category" binding:"required"`
-	Material        model.ProductMaterial `json:"material" binding:"required"`
-	StockQuantity   int                   `json:"stock_quantity" binding:"gte=0"`
-	ImageURL        string                `json:"image_url"`
-	StoreID         uint                  `json:"store_id" binding:"required"`
-	PopularityScore float64               `json:"popularity_score"`
+	Name          string                `json:"name" binding:"required"`
+	Description   string                `json:"description"`
+	Price         float64               `json:"price" binding:"required,gt=0"`
+	Weight        float64               `json:"weight"`
+	Purity        string                `json:"purity"`
+	Category      model.ProductCategory `json:"category" binding:"required"`
+	Material      model.ProductMaterial `json:"material" binding:"required"`
+	StockQuantity int                   `json:"stock_quantity" binding:"gte=0"`
+	ImageURL      string                `json:"image_url"`
+	StoreID       uint                  `json:"store_id" binding:"required"`
+}
+
+type UpdateProductRequest struct {
+	Name          string                `json:"name"`
+	Description   string                `json:"description"`
+	Price         float64               `json:"price" binding:"omitempty,gt=0"`
+	Weight        float64               `json:"weight"`
+	Purity        string                `json:"purity"`
+	Category      model.ProductCategory `json:"category"`
+	Material      model.ProductMaterial `json:"material"`
+	StockQuantity int                   `json:"stock_quantity" binding:"omitempty,gte=0"`
+	ImageURL      string                `json:"image_url"`
 }
 
 func isValidProductCategory(category model.ProductCategory) bool {
@@ -62,7 +73,6 @@ type productQuery struct {
 	sort           service.ProductSort
 	sortAscending  bool
 	includeOptions bool
-	popularOnly    bool
 	limit          int
 	offset         int
 }
@@ -111,14 +121,20 @@ func parseProductQuery(c *gin.Context) (productQuery, error) {
 	case "created_at_asc":
 		result.sort = service.ProductSortCreatedAt
 		result.sortAscending = true
+	case "wishlist", "wishlist_desc", "wishlist_count", "wishlist_count_desc":
+		result.sort = service.ProductSortWishlist
+	case "wishlist_asc", "wishlist_count_asc":
+		result.sort = service.ProductSortWishlist
+		result.sortAscending = true
+	case "views", "views_desc", "view_count", "view_count_desc":
+		result.sort = service.ProductSortViewCount
+	case "views_asc", "view_count_asc":
+		result.sort = service.ProductSortViewCount
+		result.sortAscending = true
 	case "popularity", "popular":
 		result.sort = service.ProductSortPopularity
 	default:
 		result.sort = service.ProductSortPopularity
-	}
-
-	if popularOnly := c.Query("popular_only"); popularOnly != "" {
-		result.popularOnly = strings.EqualFold(popularOnly, "true")
 	}
 
 	result.includeOptions = strings.EqualFold(c.DefaultQuery("include_options", "false"), "true")
@@ -163,7 +179,6 @@ func (ctrl *ProductController) GetAllProducts(c *gin.Context) {
 		Search:         query.search,
 		Sort:           query.sort,
 		SortAscending:  query.sortAscending,
-		PopularOnly:    query.popularOnly,
 		Limit:          query.limit,
 		Offset:         query.offset,
 		IncludeOptions: query.includeOptions,
@@ -196,24 +211,20 @@ func (ctrl *ProductController) GetAllProducts(c *gin.Context) {
 func (ctrl *ProductController) GetPopularProducts(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 
+	var category *model.ProductCategory
 	categoryParam := strings.TrimSpace(c.Query("category"))
-	if categoryParam == "" {
-		log.Warn("Category required for popular products", nil)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "category is required",
-		})
-		return
-	}
-
-	category := model.ProductCategory(categoryParam)
-	if !isValidProductCategory(category) {
-		log.Warn("Invalid category for popular products", map[string]interface{}{
-			"category": categoryParam,
-		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid category",
-		})
-		return
+	if categoryParam != "" {
+		cat := model.ProductCategory(categoryParam)
+		if !isValidProductCategory(cat) {
+			log.Warn("Invalid category for popular products", map[string]interface{}{
+				"category": categoryParam,
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid category",
+			})
+			return
+		}
+		category = &cat
 	}
 
 	limit := 6
@@ -342,17 +353,16 @@ func (ctrl *ProductController) CreateProduct(c *gin.Context) {
 	}
 
 	product := &model.Product{
-		Name:            req.Name,
-		Description:     req.Description,
-		Price:           req.Price,
-		Weight:          req.Weight,
-		Purity:          req.Purity,
-		Category:        req.Category,
-		Material:        req.Material,
-		StockQuantity:   req.StockQuantity,
-		ImageURL:        req.ImageURL,
-		StoreID:         req.StoreID,
-		PopularityScore: req.PopularityScore,
+		Name:          req.Name,
+		Description:   req.Description,
+		Price:         req.Price,
+		Weight:        req.Weight,
+		Purity:        req.Purity,
+		Category:      req.Category,
+		Material:      req.Material,
+		StockQuantity: req.StockQuantity,
+		ImageURL:      req.ImageURL,
+		StoreID:       req.StoreID,
 	}
 
 	if err := ctrl.productService.CreateProduct(product); err != nil {
@@ -401,7 +411,7 @@ func (ctrl *ProductController) UpdateProduct(c *gin.Context) {
 		return
 	}
 
-	var req CreateProductRequest
+	var req UpdateProductRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Warn("Invalid product update request", map[string]interface{}{
 			"product_id": id,
@@ -414,42 +424,89 @@ func (ctrl *ProductController) UpdateProduct(c *gin.Context) {
 		return
 	}
 
-	if !isValidProductCategory(req.Category) {
-		log.Warn("Invalid product category for update", map[string]interface{}{
+	// Fetch existing product to get current values
+	existingProduct, err := ctrl.productService.GetProductByID(uint(id))
+	if err != nil {
+		if errors.Is(err, service.ErrProductNotFound) {
+			log.Warn("Cannot update product: not found", map[string]interface{}{
+				"product_id": id,
+			})
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "Product not found",
+			})
+			return
+		}
+		log.Error("Failed to fetch product for update", err, map[string]interface{}{
 			"product_id": id,
-			"category":   req.Category,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid category",
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch product",
 		})
 		return
 	}
 
-	if !isValidProductMaterial(req.Material) {
-		log.Warn("Invalid product material for update", map[string]interface{}{
+	// Verify ownership
+	if existingProduct.Store.UserID != userID {
+		log.Warn("Product update forbidden: not owner", map[string]interface{}{
 			"product_id": id,
-			"material":   req.Material,
+			"user_id":    userID,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid material",
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "Insufficient permissions",
 		})
 		return
 	}
 
-	product := &model.Product{
-		ID:              uint(id),
-		Name:            req.Name,
-		Description:     req.Description,
-		Price:           req.Price,
-		Weight:          req.Weight,
-		Purity:          req.Purity,
-		Category:        req.Category,
-		Material:        req.Material,
-		StockQuantity:   req.StockQuantity,
-		ImageURL:        req.ImageURL,
-		StoreID:         req.StoreID,
-		PopularityScore: req.PopularityScore,
+	// Update only provided fields
+	if req.Name != "" {
+		existingProduct.Name = req.Name
 	}
+	if req.Description != "" {
+		existingProduct.Description = req.Description
+	}
+	if req.Price > 0 {
+		existingProduct.Price = req.Price
+	}
+	if req.Weight > 0 {
+		existingProduct.Weight = req.Weight
+	}
+	if req.Purity != "" {
+		existingProduct.Purity = req.Purity
+	}
+	if req.Category != "" {
+		if !isValidProductCategory(req.Category) {
+			log.Warn("Invalid product category for update", map[string]interface{}{
+				"product_id": id,
+				"category":   req.Category,
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid category",
+			})
+			return
+		}
+		existingProduct.Category = req.Category
+	}
+	if req.Material != "" {
+		if !isValidProductMaterial(req.Material) {
+			log.Warn("Invalid product material for update", map[string]interface{}{
+				"product_id": id,
+				"material":   req.Material,
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid material",
+			})
+			return
+		}
+		existingProduct.Material = req.Material
+	}
+	if req.StockQuantity >= 0 {
+		existingProduct.StockQuantity = req.StockQuantity
+	}
+	if req.ImageURL != "" {
+		existingProduct.ImageURL = req.ImageURL
+	}
+
+	product := existingProduct
 
 	if err := ctrl.productService.UpdateProduct(userID, product); err != nil {
 		if errors.Is(err, service.ErrProductNotFound) {

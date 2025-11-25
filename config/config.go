@@ -15,6 +15,7 @@ type Config struct {
 	JWT      JWTConfig
 	CORS     CORSConfig
 	Payment  PaymentConfig
+	S3       S3Config
 }
 
 type ServerConfig struct {
@@ -55,6 +56,14 @@ type KakaoPayConfig struct {
 	CancelURL   string
 }
 
+type S3Config struct {
+	Region          string
+	Bucket          string
+	AccessKeyID     string
+	SecretAccessKey string
+	BaseURL         string // CloudFront or S3 direct URL
+}
+
 func Load() (*Config, error) {
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
@@ -92,6 +101,13 @@ func Load() (*Config, error) {
 				FailURL:     getEnv("KAKAOPAY_FAIL_URL", "http://localhost:8080/api/v1/payments/kakao/fail"),
 				CancelURL:   getEnv("KAKAOPAY_CANCEL_URL", "http://localhost:8080/api/v1/payments/kakao/cancel"),
 			},
+		},
+		S3: S3Config{
+			Region:          getEnv("AWS_REGION", "ap-northeast-2"),
+			Bucket:          getEnv("AWS_S3_BUCKET", "udonggeum-uploads"),
+			AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
+			SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
+			BaseURL:         getEnv("AWS_S3_BASE_URL", ""),
 		},
 	}
 
