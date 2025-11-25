@@ -122,7 +122,9 @@ func (s *paymentService) InitiatePayment(ctx context.Context, userID, orderID ui
 	// Prepare Kakao Pay request
 	// Generate item name from order items
 	itemName := "주문 결제"
-	if len(order.OrderItems) > 0 {
+	if len(order.OrderItems) == 1 {
+		itemName = order.OrderItems[0].Product.Name
+	} else if len(order.OrderItems) > 1 {
 		itemName = fmt.Sprintf("%s 외 %d건", order.OrderItems[0].Product.Name, len(order.OrderItems)-1)
 	}
 
