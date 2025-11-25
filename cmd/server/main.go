@@ -81,6 +81,11 @@ func main() {
 	productService := service.NewProductService(productRepo, productOptionRepo)
 	cartService := service.NewCartService(cartRepo, productRepo, productOptionRepo)
 	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, dbConn, productOptionRepo)
+
+	paymentService, err := service.NewPaymentService(orderRepo, cfg, dbConn)
+	if err != nil {
+		logger.Fatal("Failed to initialize payment service", err)
+	}
 	wishlistService := service.NewWishlistService(wishlistRepo, productRepo)
 	addressService := service.NewAddressService(addressRepo)
 	sellerService := service.NewSellerService(orderRepo, storeRepo)
@@ -90,6 +95,7 @@ func main() {
 	productController := controller.NewProductController(productService)
 	cartController := controller.NewCartController(cartService)
 	orderController := controller.NewOrderController(orderService)
+	paymentController := controller.NewPaymentController(paymentService)
 	wishlistController := controller.NewWishlistController(wishlistService)
 	addressController := controller.NewAddressController(addressService)
 	sellerController := controller.NewSellerController(sellerService, storeService)
@@ -111,6 +117,7 @@ func main() {
 		productController,
 		cartController,
 		orderController,
+		paymentController,
 		wishlistController,
 		addressController,
 		sellerController,

@@ -13,6 +13,7 @@ type Router struct {
 	productController  *controller.ProductController
 	cartController     *controller.CartController
 	orderController    *controller.OrderController
+	paymentController  *controller.PaymentController
 	wishlistController *controller.WishlistController
 	addressController  *controller.AddressController
 	sellerController   *controller.SellerController
@@ -27,6 +28,7 @@ func NewRouter(
 	productController *controller.ProductController,
 	cartController *controller.CartController,
 	orderController *controller.OrderController,
+	paymentController *controller.PaymentController,
 	wishlistController *controller.WishlistController,
 	addressController *controller.AddressController,
 	sellerController *controller.SellerController,
@@ -40,6 +42,7 @@ func NewRouter(
 		productController:  productController,
 		cartController:     cartController,
 		orderController:    orderController,
+		paymentController:  paymentController,
 		wishlistController: wishlistController,
 		addressController:  addressController,
 		sellerController:   sellerController,
@@ -145,6 +148,32 @@ func (r *Router) Setup() *gin.Engine {
 				r.orderController.UpdateOrderStatus,
 			)
 			orders.PUT("/:id/payment", r.orderController.UpdatePaymentStatus)
+		}
+
+		payments := v1.Group("/payments")
+		{
+			// Kakao Pay routes
+			kakao := payments.Group("/kakao")
+			{
+				// Authenticated routes
+				kakao.POST("/ready",
+					r.authMiddleware.Authenticate(),
+					r.paymentController.InitiatePayment,
+				)
+				kakao.POST("/:orderID/refund",
+					r.authMiddleware.Authenticate(),
+					r.paymentController.RefundPayment,
+				)
+				kakao.GET("/status/:orderID",
+					r.authMiddleware.Authenticate(),
+					r.paymentController.GetPaymentStatus,
+				)
+
+				// Callback routes (no authentication required)
+				kakao.GET("/success", r.paymentController.PaymentSuccess)
+				kakao.GET("/fail", r.paymentController.PaymentFail)
+				kakao.GET("/cancel", r.paymentController.PaymentCancel)
+			}
 		}
 
 		wishlist := v1.Group("/wishlist")

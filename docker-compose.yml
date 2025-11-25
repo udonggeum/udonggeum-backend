@@ -17,6 +17,8 @@ services:
         DB_SSLMODE: disable
       # 필요하면 추가 (예: Gin 환경, JWT 시크릿 등)
         GIN_MODE: release
+    env_file:
+      - .env.development
     depends_on:
       - db
 
