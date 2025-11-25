@@ -45,9 +45,12 @@ func (r *ReadyResponse) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	// Kakao Pay returns timestamps in KST (Asia/Seoul) without timezone indicator.
+	kst, _ := time.LoadLocation("Asia/Seoul")
+
 	// Parse the created_at time format
 	if aux.CreatedAt != "" {
-		createdTime, err := time.Parse("2006-01-02T15:04:05", aux.CreatedAt)
+		createdTime, err := time.ParseInLocation("2006-01-02T15:04:05", aux.CreatedAt, kst)
 		if err != nil {
 			return fmt.Errorf("failed to parse created_at: %w", err)
 		}
@@ -126,9 +129,14 @@ func (a *ApproveResponse) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	// Kakao Pay returns timestamps in KST (Asia/Seoul) without timezone indicator.
+	// Using time.Parse() would incorrectly interpret these as UTC.
+	// We must use ParseInLocation() to correctly interpret them as KST.
+	kst, _ := time.LoadLocation("Asia/Seoul")
+
 	// Parse the created_at time format
 	if aux.CreatedAt != "" {
-		createdTime, err := time.Parse("2006-01-02T15:04:05", aux.CreatedAt)
+		createdTime, err := time.ParseInLocation("2006-01-02T15:04:05", aux.CreatedAt, kst)
 		if err != nil {
 			return fmt.Errorf("failed to parse created_at: %w", err)
 		}
@@ -137,7 +145,7 @@ func (a *ApproveResponse) UnmarshalJSON(data []byte) error {
 
 	// Parse the approved_at time format
 	if aux.ApprovedAt != "" {
-		approvedTime, err := time.Parse("2006-01-02T15:04:05", aux.ApprovedAt)
+		approvedTime, err := time.ParseInLocation("2006-01-02T15:04:05", aux.ApprovedAt, kst)
 		if err != nil {
 			return fmt.Errorf("failed to parse approved_at: %w", err)
 		}
@@ -194,11 +202,13 @@ func (c *CancelResponse) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	// Kakao Pay returns timestamps in KST (Asia/Seoul) without timezone indicator.
+	kst, _ := time.LoadLocation("Asia/Seoul")
 	timeLayout := "2006-01-02T15:04:05"
 
 	// Parse timestamps
 	if aux.CreatedAt != "" {
-		t, err := time.Parse(timeLayout, aux.CreatedAt)
+		t, err := time.ParseInLocation(timeLayout, aux.CreatedAt, kst)
 		if err != nil {
 			return fmt.Errorf("failed to parse created_at: %w", err)
 		}
@@ -206,7 +216,7 @@ func (c *CancelResponse) UnmarshalJSON(data []byte) error {
 	}
 
 	if aux.ApprovedAt != "" {
-		t, err := time.Parse(timeLayout, aux.ApprovedAt)
+		t, err := time.ParseInLocation(timeLayout, aux.ApprovedAt, kst)
 		if err != nil {
 			return fmt.Errorf("failed to parse approved_at: %w", err)
 		}
@@ -214,7 +224,7 @@ func (c *CancelResponse) UnmarshalJSON(data []byte) error {
 	}
 
 	if aux.CanceledAt != "" {
-		t, err := time.Parse(timeLayout, aux.CanceledAt)
+		t, err := time.ParseInLocation(timeLayout, aux.CanceledAt, kst)
 		if err != nil {
 			return fmt.Errorf("failed to parse canceled_at: %w", err)
 		}
