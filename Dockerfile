@@ -26,9 +26,6 @@ WORKDIR /root/
 # 빌드된 실행 파일 복사
 COPY --from=builder /app/app .
 
-# .env 파일 복사 (환경 변수용)
-COPY --from=builder /app/.env .env
-
 # 포트 (네 서버에서 사용하는 포트로 맞춰)
 EXPOSE 8080
 
