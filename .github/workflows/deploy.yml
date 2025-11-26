@@ -43,5 +43,5 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd /home/ubuntu/service
-            docker-compose pull app
-            docker-compose up -d app
+            docker compose pull app
+            docker compose up -d app
