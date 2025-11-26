@@ -1,0 +1,47 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23' # 너가 쓰는 버전 맞추면 됨
+
+      - name: Build Go
+        run: |
+          go mod tidy
+          go build ./...
+
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+            -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+      - name: Build & Push Docker image
+        run: |
+          IMAGE=ghcr.io/udonggeum/udonggeum-backend
+          TAG=latest
+          docker build -t $IMAGE:$TAG .
+          docker push $IMAGE:$TAG
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /home/ubuntu/service
+            docker-compose pull app
+            docker-compose up -d app
