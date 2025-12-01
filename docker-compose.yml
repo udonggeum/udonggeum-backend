@@ -1,27 +1,37 @@
 version: "3.9"
 
 services:
+  # Frontend - React SPA with Nginx
+  frontend:
+    image: ghcr.io/udonggeum/udonggeum-frontend:latest
+    container_name: udonggeum-frontend
+    restart: always
+    # Caddy가 프록시할 거라 호스트 포트 바인딩 제거
+    expose:
+      - "80"
+    depends_on:
+      - app
+    networks:
+      - udonggeum-network
+
+  # Backend - Go API Server
   app:
     image: ghcr.io/udonggeum/udonggeum-backend:latest
     container_name: udonggeum-backend
     restart: always
     ports:
       - "8080:8080"
-    environment:
-      # DB 연결정보 (Go 서버에서 환경변수로 읽어가게)doc
-        DB_HOST: db
-        DB_PORT: 5432
-        DB_USER: postgres
-        DB_PASSWORD: postgres
-        DB_NAME: udonggeum
-        DB_SSLMODE: disable
-      # 필요하면 추가 (예: Gin 환경, JWT 시크릿 등)
-        GIN_MODE: release
     env_file:
-      - .env.development
+      - .env.prod
+    environment:
+      DB_HOST: db
     depends_on:
       - db
+      - redis
+    networks:
+      - udonggeum-network
 
+  # Database - PostgreSQL
   db:
     image: postgres:15
     container_name: udonggeum-db
@@ -32,8 +42,45 @@ services:
       POSTGRES_DB: udonggeum
     volumes:
       - db_data:/var/lib/postgresql/data
+    # ports:
+    #   - "5432:5432"
+    networks:
+      - udonggeum-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: udonggeum-redis
+    restart: always
     ports:
-      - "5432:5432"
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - udonggeum-network
+
+  # Caddy - HTTPS + Reverse Proxy
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+    depends_on:
+      - frontend
+    networks:
+      - udonggeum-network
+
+networks:
+  udonggeum-network:
+    driver: bridge
 
 volumes:
   db_data:
+  redis_data:

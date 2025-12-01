@@ -373,12 +373,26 @@ func (ctrl *AuthController) ResetPassword(c *gin.Context) {
 	})
 }
 
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
 // Logout handles user logout
 // POST /api/v1/auth/logout
-// Note: Since we're using stateless JWT, logout is handled client-side
-// This endpoint is provided for consistency and future token blacklisting
 func (ctrl *AuthController) Logout(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
+
+	var req LogoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid logout request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
 
 	userID, exists := middleware.GetUserID(c)
 	if exists {
@@ -389,11 +403,11 @@ func (ctrl *AuthController) Logout(c *gin.Context) {
 		log.Debug("Logout called without authenticated user")
 	}
 
-	// In a stateless JWT system, logout is primarily handled client-side
-	// by removing the tokens from storage. This endpoint is provided for:
-	// 1. Logging/auditing purposes
-	// 2. Future implementation of token blacklisting
-	// 3. API consistency with frontend expectations
+	// Revoke the refresh token by adding it to blacklist
+	if err := ctrl.authService.RevokeToken(req.RefreshToken); err != nil {
+		log.Error("Failed to revoke token during logout", err, nil)
+		// Don't fail the request, logout should always succeed from user perspective
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Logged out successfully",
@@ -421,8 +435,8 @@ func (ctrl *AuthController) RefreshToken(c *gin.Context) {
 
 	tokens, err := ctrl.authService.RefreshToken(req.RefreshToken)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidToken) || errors.Is(err, service.ErrExpiredToken) {
-			log.Warn("Token refresh failed: invalid or expired token", map[string]interface{}{
+		if errors.Is(err, service.ErrInvalidToken) || errors.Is(err, service.ErrExpiredToken) || errors.Is(err, service.ErrTokenRevoked) {
+			log.Warn("Token refresh failed: invalid, expired, or revoked token", map[string]interface{}{
 				"error": err.Error(),
 			})
 			c.JSON(http.StatusUnauthorized, gin.H{

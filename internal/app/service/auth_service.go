@@ -1,12 +1,14 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"time"
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/repository"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
+	redisClient "github.com/ikkim/udonggeum-backend/pkg/redis"
 	"github.com/ikkim/udonggeum-backend/pkg/util"
 	"gorm.io/gorm"
 )
@@ -17,6 +19,7 @@ var (
 	ErrUserNotFound       = errors.New("user not found")
 	ErrInvalidToken       = errors.New("invalid token")
 	ErrExpiredToken       = errors.New("token has expired")
+	ErrTokenRevoked       = errors.New("token has been revoked")
 )
 
 type AuthService interface {
@@ -25,6 +28,7 @@ type AuthService interface {
 	GetUserByID(id uint) (*model.User, error)
 	UpdateProfile(userID uint, name, phone string) (*model.User, error)
 	RefreshToken(refreshToken string) (*util.TokenPair, error)
+	RevokeToken(refreshToken string) error
 }
 
 type authService struct {
@@ -261,6 +265,18 @@ func (s *authService) UpdateProfile(userID uint, name, phone string) (*model.Use
 func (s *authService) RefreshToken(refreshToken string) (*util.TokenPair, error) {
 	logger.Debug("Attempting to refresh token")
 
+	// Check if token is blacklisted
+	ctx := context.Background()
+	isBlacklisted, err := redisClient.IsTokenBlacklisted(ctx, refreshToken)
+	if err != nil {
+		logger.Error("Failed to check token blacklist", err, nil)
+		return nil, err
+	}
+	if isBlacklisted {
+		logger.Warn("Attempted to use revoked refresh token", nil)
+		return nil, ErrTokenRevoked
+	}
+
 	// Validate the refresh token
 	claims, err := util.ValidateToken(refreshToken, s.jwtSecret)
 	if err != nil {
@@ -305,9 +321,52 @@ func (s *authService) RefreshToken(refreshToken string) (*util.TokenPair, error)
 		return nil, err
 	}
 
+	// Blacklist the old refresh token (token rotation)
+	if err := redisClient.BlacklistToken(ctx, refreshToken, s.refreshExpiry); err != nil {
+		logger.Error("Failed to blacklist old refresh token", err, nil)
+		// Don't fail the request, just log the error
+	}
+
 	logger.Info("Token refreshed successfully", map[string]interface{}{
 		"user_id": user.ID,
 	})
 
 	return tokens, nil
+}
+
+// RevokeToken adds a refresh token to the blacklist
+func (s *authService) RevokeToken(refreshToken string) error {
+	logger.Debug("Attempting to revoke token")
+
+	// Validate token to get expiry time
+	claims, err := util.ValidateToken(refreshToken, s.jwtSecret)
+	if err != nil {
+		// Even if token is invalid/expired, we still blacklist it
+		logger.Warn("Revoking invalid/expired token", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	// Calculate remaining TTL
+	var ttl time.Duration
+	if claims != nil && claims.ExpiresAt != nil {
+		ttl = time.Until(claims.ExpiresAt.Time)
+		if ttl < 0 {
+			// Token already expired, no need to blacklist
+			logger.Debug("Token already expired, skipping blacklist", nil)
+			return nil
+		}
+	} else {
+		// Default to refresh token expiry if we can't determine
+		ttl = s.refreshExpiry
+	}
+
+	ctx := context.Background()
+	if err := redisClient.BlacklistToken(ctx, refreshToken, ttl); err != nil {
+		logger.Error("Failed to blacklist token", err, nil)
+		return err
+	}
+
+	logger.Info("Token revoked successfully", nil)
+	return nil
 }

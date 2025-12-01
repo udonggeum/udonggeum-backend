@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
+	Redis    RedisConfig
 	JWT      JWTConfig
 	CORS     CORSConfig
 	Payment  PaymentConfig
@@ -31,6 +32,13 @@ type DatabaseConfig struct {
 	Password string
 	DBName   string
 	SSLMode  string
+}
+
+type RedisConfig struct {
+	Host     string
+	Port     string
+	Password string
+	DB       int
 }
 
 type JWTConfig struct {
@@ -83,6 +91,12 @@ func Load() (*Config, error) {
 			Password: getEnv("DB_PASSWORD", "1234"),
 			DBName:   getEnv("DB_NAME", "udonggeum"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+		},
+		Redis: RedisConfig{
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     getEnv("REDIS_PORT", "6379"),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       parseInt(getEnv("REDIS_DB", "0")),
 		},
 		JWT: JWTConfig{
 			Secret:             getEnv("JWT_SECRET", "your-secret-key"),
@@ -150,5 +164,11 @@ func parseSlice(s string) []string {
 		result = append(result, s[i:end])
 		i = end + 1
 	}
+	return result
+}
+
+func parseInt(s string) int {
+	var result int
+	fmt.Sscanf(s, "%d", &result)
 	return result
 }
