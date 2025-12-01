@@ -47,6 +47,10 @@ type ResetPasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=6"`
 }
 
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
 // Register handles user registration
 // POST /api/v1/auth/register
 func (ctrl *AuthController) Register(c *gin.Context) {
@@ -366,5 +370,77 @@ func (ctrl *AuthController) ResetPassword(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Password reset successful",
+	})
+}
+
+// Logout handles user logout
+// POST /api/v1/auth/logout
+// Note: Since we're using stateless JWT, logout is handled client-side
+// This endpoint is provided for consistency and future token blacklisting
+func (ctrl *AuthController) Logout(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	userID, exists := middleware.GetUserID(c)
+	if exists {
+		log.Info("User logged out", map[string]interface{}{
+			"user_id": userID,
+		})
+	} else {
+		log.Debug("Logout called without authenticated user")
+	}
+
+	// In a stateless JWT system, logout is primarily handled client-side
+	// by removing the tokens from storage. This endpoint is provided for:
+	// 1. Logging/auditing purposes
+	// 2. Future implementation of token blacklisting
+	// 3. API consistency with frontend expectations
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Logged out successfully",
+	})
+}
+
+// RefreshToken handles token refresh
+// POST /api/v1/auth/refresh
+func (ctrl *AuthController) RefreshToken(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	var req RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid refresh token request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	log.Debug("Processing token refresh")
+
+	tokens, err := ctrl.authService.RefreshToken(req.RefreshToken)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidToken) || errors.Is(err, service.ErrExpiredToken) {
+			log.Warn("Token refresh failed: invalid or expired token", map[string]interface{}{
+				"error": err.Error(),
+			})
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid or expired refresh token",
+			})
+			return
+		}
+		log.Error("Failed to refresh token", err, nil)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to refresh token",
+		})
+		return
+	}
+
+	log.Info("Token refreshed successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Token refreshed successfully",
+		"tokens":  tokens,
 	})
 }

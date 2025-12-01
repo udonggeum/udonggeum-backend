@@ -15,6 +15,8 @@ var (
 	ErrEmailAlreadyExists = errors.New("email already exists")
 	ErrInvalidCredentials = errors.New("invalid email or password")
 	ErrUserNotFound       = errors.New("user not found")
+	ErrInvalidToken       = errors.New("invalid token")
+	ErrExpiredToken       = errors.New("token has expired")
 )
 
 type AuthService interface {
@@ -22,6 +24,7 @@ type AuthService interface {
 	Login(email, password string) (*model.User, *util.TokenPair, error)
 	GetUserByID(id uint) (*model.User, error)
 	UpdateProfile(userID uint, name, phone string) (*model.User, error)
+	RefreshToken(refreshToken string) (*util.TokenPair, error)
 }
 
 type authService struct {
@@ -252,4 +255,59 @@ func (s *authService) UpdateProfile(userID uint, name, phone string) (*model.Use
 	})
 
 	return user, nil
+}
+
+// RefreshToken validates a refresh token and generates a new token pair
+func (s *authService) RefreshToken(refreshToken string) (*util.TokenPair, error) {
+	logger.Debug("Attempting to refresh token")
+
+	// Validate the refresh token
+	claims, err := util.ValidateToken(refreshToken, s.jwtSecret)
+	if err != nil {
+		if errors.Is(err, util.ErrExpiredToken) {
+			logger.Warn("Refresh token has expired", nil)
+			return nil, ErrExpiredToken
+		}
+		logger.Warn("Invalid refresh token", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return nil, ErrInvalidToken
+	}
+
+	// Verify user still exists
+	user, err := s.userRepo.FindByID(claims.UserID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Warn("User not found for token refresh", map[string]interface{}{
+				"user_id": claims.UserID,
+			})
+			return nil, ErrUserNotFound
+		}
+		logger.Error("Failed to fetch user for token refresh", err, map[string]interface{}{
+			"user_id": claims.UserID,
+		})
+		return nil, err
+	}
+
+	// Generate new token pair
+	tokens, err := util.GenerateTokenPair(
+		user.ID,
+		user.Email,
+		string(user.Role),
+		s.jwtSecret,
+		s.accessExpiry,
+		s.refreshExpiry,
+	)
+	if err != nil {
+		logger.Error("Failed to generate new token pair", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
+		return nil, err
+	}
+
+	logger.Info("Token refreshed successfully", map[string]interface{}{
+		"user_id": user.ID,
+	})
+
+	return tokens, nil
 }
