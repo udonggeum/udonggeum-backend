@@ -46,6 +46,8 @@ type StoreMutation struct {
 	Region      string
 	District    string
 	Address     string
+	Latitude    *float64
+	Longitude   *float64
 	PhoneNumber string
 	ImageURL    string
 	Description string
@@ -175,6 +177,8 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 	existing.Region = input.Region
 	existing.District = input.District
 	existing.Address = input.Address
+	existing.Latitude = input.Latitude
+	existing.Longitude = input.Longitude
 	existing.PhoneNumber = input.PhoneNumber
 	existing.ImageURL = input.ImageURL
 	existing.Description = input.Description

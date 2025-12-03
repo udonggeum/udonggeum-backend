@@ -14,6 +14,8 @@ type Store struct {
 	Region      string         `gorm:"index;not null" json:"region"`         // 시·도
 	District    string         `gorm:"index;not null" json:"district"`       // 구·군
 	Address     string         `gorm:"type:text" json:"address"`             // 상세 주소
+	Latitude    *float64       `gorm:"type:decimal(10,8)" json:"latitude"`   // 위도 (WGS84)
+	Longitude   *float64       `gorm:"type:decimal(11,8)" json:"longitude"`  // 경도 (WGS84)
 	PhoneNumber string         `gorm:"type:varchar(30)" json:"phone_number"` // 연락처
 	ImageURL    string         `json:"image_url"`                            // 매장 이미지
 	Description string         `gorm:"type:text" json:"description"`         // 매장 소개
