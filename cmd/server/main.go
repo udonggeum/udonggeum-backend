@@ -15,6 +15,7 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/router"
 	"github.com/ikkim/udonggeum-backend/internal/storage"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
+	redisClient "github.com/ikkim/udonggeum-backend/pkg/redis"
 )
 
 func main() {
@@ -45,6 +46,15 @@ func main() {
 	defer func() {
 		if err := db.Close(); err != nil {
 			logger.Error("Failed to close database connection", err)
+		}
+	}()
+
+	if err := redisClient.Init(&cfg.Redis); err != nil {
+		logger.Fatal("Failed to initialize Redis", err)
+	}
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			logger.Error("Failed to close Redis connection", err)
 		}
 	}()
 
