@@ -12,7 +12,7 @@ import (
 )
 
 func setupAuthServiceTest(t *testing.T) (AuthService, *repository.UserRepository) {
-	testDB, err := db.SetupTestDB()
+	testDB, err := db.SetupTestDB(t)
 	require.NoError(t, err)
 
 	userRepo := repository.NewUserRepository(testDB)

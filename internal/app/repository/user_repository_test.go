@@ -11,7 +11,7 @@ import (
 )
 
 func setupUserTest(t *testing.T) (*gorm.DB, UserRepository) {
-	testDB, err := db.SetupTestDB()
+	testDB, err := db.SetupTestDB(t)
 	require.NoError(t, err)
 
 	repo := NewUserRepository(testDB)
@@ -20,7 +20,7 @@ func setupUserTest(t *testing.T) (*gorm.DB, UserRepository) {
 
 func TestUserRepository_Create(t *testing.T) {
 	testDB, repo := setupUserTest(t)
-	defer db.CleanupTestDB(testDB)
+	defer db.CleanupTestDB(t, testDB)
 
 	tests := []struct {
 		name    string
@@ -67,7 +67,7 @@ func TestUserRepository_Create(t *testing.T) {
 
 func TestUserRepository_FindByID(t *testing.T) {
 	testDB, repo := setupUserTest(t)
-	defer db.CleanupTestDB(testDB)
+	defer db.CleanupTestDB(t, testDB)
 
 	// Create test user
 	user := &model.User{
@@ -116,7 +116,7 @@ func TestUserRepository_FindByID(t *testing.T) {
 
 func TestUserRepository_FindByEmail(t *testing.T) {
 	testDB, repo := setupUserTest(t)
-	defer db.CleanupTestDB(testDB)
+	defer db.CleanupTestDB(t, testDB)
 
 	// Create test user
 	user := &model.User{
@@ -165,7 +165,7 @@ func TestUserRepository_FindByEmail(t *testing.T) {
 
 func TestUserRepository_Update(t *testing.T) {
 	testDB, repo := setupUserTest(t)
-	defer db.CleanupTestDB(testDB)
+	defer db.CleanupTestDB(t, testDB)
 
 	// Create test user
 	user := &model.User{
@@ -194,7 +194,7 @@ func TestUserRepository_Update(t *testing.T) {
 
 func TestUserRepository_Delete(t *testing.T) {
 	testDB, repo := setupUserTest(t)
-	defer db.CleanupTestDB(testDB)
+	defer db.CleanupTestDB(t, testDB)
 
 	// Create test user
 	user := &model.User{

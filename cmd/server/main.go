@@ -14,7 +14,6 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
 	"github.com/ikkim/udonggeum-backend/internal/router"
 	"github.com/ikkim/udonggeum-backend/internal/scheduler"
-	"github.com/ikkim/udonggeum-backend/internal/storage"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 	redisClient "github.com/ikkim/udonggeum-backend/pkg/redis"
 )
@@ -73,14 +72,10 @@ func main() {
 
 	userRepo := repository.NewUserRepository(dbConn)
 	storeRepo := repository.NewStoreRepository(dbConn)
-	productRepo := repository.NewProductRepository(dbConn)
-	productOptionRepo := repository.NewProductOptionRepository(dbConn)
-	orderRepo := repository.NewOrderRepository(dbConn)
-	cartRepo := repository.NewCartRepository(dbConn)
-	wishlistRepo := repository.NewWishlistRepository(dbConn)
-	addressRepo := repository.NewAddressRepository(dbConn)
 	passwordResetRepo := repository.NewPasswordResetRepository(dbConn)
 	goldPriceRepo := repository.NewGoldPriceRepository(dbConn)
+	communityRepo := repository.NewCommunityRepository(dbConn)
+	reviewRepo := repository.NewReviewRepository(dbConn)
 
 	authService := service.NewAuthService(
 		userRepo,
@@ -90,55 +85,27 @@ func main() {
 	)
 	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
 	storeService := service.NewStoreService(storeRepo)
-	productService := service.NewProductService(productRepo, productOptionRepo)
-	cartService := service.NewCartService(cartRepo, productRepo, productOptionRepo)
-	orderService := service.NewOrderService(orderRepo, cartRepo, productRepo, dbConn, productOptionRepo)
-
-	paymentService, err := service.NewPaymentService(orderRepo, cfg, dbConn)
-	if err != nil {
-		logger.Fatal("Failed to initialize payment service", err)
-	}
-	wishlistService := service.NewWishlistService(wishlistRepo, productRepo)
-	addressService := service.NewAddressService(addressRepo)
-	sellerService := service.NewSellerService(orderRepo, storeRepo)
 
 	goldPriceAPI := service.NewDefaultGoldPriceAPI(cfg.GoldPrice.APIURL, cfg.GoldPrice.APIKey)
 	goldPriceService := service.NewGoldPriceService(goldPriceRepo, goldPriceAPI)
 
+	communityService := service.NewCommunityService(communityRepo, userRepo)
+	reviewService := service.NewReviewService(reviewRepo, storeRepo)
+
 	authController := controller.NewAuthController(authService, passwordResetService)
 	storeController := controller.NewStoreController(storeService)
-	productController := controller.NewProductController(productService)
-	cartController := controller.NewCartController(cartService)
-	orderController := controller.NewOrderController(orderService)
-	paymentController := controller.NewPaymentController(paymentService)
-	wishlistController := controller.NewWishlistController(wishlistService)
-	addressController := controller.NewAddressController(addressService)
-	sellerController := controller.NewSellerController(sellerService, storeService)
 	goldPriceController := controller.NewGoldPriceController(goldPriceService)
-
-	s3Storage := storage.NewS3Storage(
-		cfg.S3.Region,
-		cfg.S3.Bucket,
-		cfg.S3.AccessKeyID,
-		cfg.S3.SecretAccessKey,
-		cfg.S3.BaseURL,
-	)
-	uploadController := controller.NewUploadController(s3Storage)
+	communityController := controller.NewCommunityController(communityService)
+	reviewController := controller.NewReviewController(reviewService)
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
 	r := router.NewRouter(
 		authController,
 		storeController,
-		productController,
-		cartController,
-		orderController,
-		paymentController,
-		wishlistController,
-		addressController,
-		sellerController,
-		uploadController,
 		goldPriceController,
+		communityController,
+		reviewController,
 		authMiddleware,
 		cfg,
 	)

@@ -21,7 +21,7 @@ import (
 func setupAuthControllerTest(t *testing.T) (*gin.Engine, *AuthController, service.AuthService) {
 	gin.SetMode(gin.TestMode)
 
-	testDB, err := db.SetupTestDB()
+	testDB, err := db.SetupTestDB(t)
 	require.NoError(t, err)
 
 	userRepo := repository.NewUserRepository(testDB)

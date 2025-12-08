@@ -5,7 +5,15 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/pkg/util"
+)
+
+// Context keys for user information
+const (
+	UserIDKey    = "user_id"
+	UserEmailKey = "user_email"
+	UserRoleKey  = "user_role"
 )
 
 type AuthMiddleware struct {
@@ -65,7 +73,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 		// Set user information in context
 		c.Set("user_id", claims.UserID)
 		c.Set("user_email", claims.Email)
-		c.Set("user_role", claims.Role)
+		c.Set("user_role", model.UserRole(claims.Role))
 
 		log.Debug("User authenticated successfully", map[string]interface{}{
 			"user_id": claims.UserID,
@@ -94,11 +102,11 @@ func (m *AuthMiddleware) RequireRole(roles ...string) gin.HandlerFunc {
 			return
 		}
 
-		role := userRole.(string)
+		role := userRole.(model.UserRole)
 		userID, _ := GetUserID(c)
 
 		for _, r := range roles {
-			if role == r {
+			if role == model.UserRole(r) {
 				log.Debug("Role check passed", map[string]interface{}{
 					"user_id":       userID,
 					"user_role":     role,
@@ -141,10 +149,10 @@ func GetUserEmail(c *gin.Context) (string, bool) {
 }
 
 // GetUserRole extracts user role from context
-func GetUserRole(c *gin.Context) (string, bool) {
+func GetUserRole(c *gin.Context) (model.UserRole, bool) {
 	role, exists := c.Get("user_role")
 	if !exists {
 		return "", false
 	}
-	return role.(string), true
+	return role.(model.UserRole), true
 }

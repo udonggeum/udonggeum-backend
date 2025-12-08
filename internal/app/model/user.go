@@ -9,9 +9,8 @@ import (
 type UserRole string // 사용자 권한 타입
 
 const (
-	RoleUser   UserRole = "user"   // 일반 사용자 권한
-	RoleSeller UserRole = "seller" // 판매자 권한
-	RoleAdmin  UserRole = "admin"  // 관리자 권한
+	RoleUser  UserRole = "user"  // 일반 사용자 권한
+	RoleAdmin UserRole = "admin" // 관리자 권한
 )
 
 type User struct {
@@ -25,9 +24,7 @@ type User struct {
 	UpdatedAt    time.Time      `json:"updated_at"`                                  // 수정 시각
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`                              // 삭제 시각(소프트 삭제)
 
-	Orders    []Order    `gorm:"foreignKey:UserID" json:"orders,omitempty"`     // 사용자 주문
-	CartItems []CartItem `gorm:"foreignKey:UserID" json:"cart_items,omitempty"` // 장바구니 항목
-	Stores    []Store    `gorm:"foreignKey:UserID" json:"stores,omitempty"`     // 소유 매장 목록
+	Stores []Store `gorm:"foreignKey:UserID" json:"stores,omitempty"` // 소유 매장 목록 (Admin만 관리)
 }
 
 func (User) TableName() string {

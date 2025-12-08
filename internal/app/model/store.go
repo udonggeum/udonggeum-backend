@@ -27,14 +27,9 @@ type Store struct {
 	BuyingPlatinum bool `gorm:"default:false" json:"buying_platinum"` // 백금 매입 가능 여부
 	BuyingSilver   bool `gorm:"default:false" json:"buying_silver"`   // 은 매입 가능 여부
 
-	CreatedAt   time.Time      `json:"created_at"`                           // 생성 시각
-	UpdatedAt   time.Time      `json:"updated_at"`                           // 수정 시각
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`                       // 삭제 시각(소프트 삭제)
-
-	Products []Product `gorm:"foreignKey:StoreID" json:"products,omitempty"` // 보유 상품 목록
-
-	CategoryCounts map[ProductCategory]int `gorm:"-" json:"category_counts,omitempty"` // 카테고리별 상품 수
-	TotalProducts  int                     `gorm:"-" json:"total_products,omitempty"`  // 전체 상품 수
+	CreatedAt time.Time      `json:"created_at"` // 생성 시각
+	UpdatedAt time.Time      `json:"updated_at"` // 수정 시각
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"` // 삭제 시각(소프트 삭제)
 }
 
 func (Store) TableName() string {

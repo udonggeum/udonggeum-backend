@@ -3,58 +3,83 @@ package db
 import (
 	"fmt"
 	"log"
-	"time"
+	"os"
+	"testing"
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
-// SetupTestDB creates an in-memory SQLite database for testing
-func SetupTestDB() (*gorm.DB, error) {
-	dsn := fmt.Sprintf("file:testdb_%d?mode=memory&cache=shared", time.Now().UnixNano())
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
+var TestDB *gorm.DB
+
+func SetupTestDB(t *testing.T) (*gorm.DB, error) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		dsn = "host=localhost user=postgres password=postgres dbname=udonggeum_test port=5432 sslmode=disable"
+	}
+
+	var err error
+	TestDB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to test database: %w", err)
 	}
 
-	err = db.AutoMigrate(
-		&model.Store{},
+	// Auto migrate test models
+	if err := TestDB.AutoMigrate(
 		&model.User{},
-		&model.Product{},
-		&model.ProductOption{},
-		&model.Order{},
-		&model.OrderItem{},
-		&model.CartItem{},
-		&model.WishlistItem{},
-	)
-	if err != nil {
+		&model.Store{},
+		&model.PasswordReset{},
+		&model.GoldPrice{},
+	); err != nil {
 		return nil, fmt.Errorf("failed to migrate test database: %w", err)
 	}
 
-	return db, nil
+	return TestDB, nil
 }
 
-// CleanupTestDB cleans up the test database
-func CleanupTestDB(db *gorm.DB) {
+func CleanupTestDB(t *testing.T, db *gorm.DB) {
+	if db == nil {
+		return
+	}
+
+	// Drop all tables in reverse order of dependencies
+	tables := []interface{}{
+		&model.GoldPrice{},
+		&model.PasswordReset{},
+		&model.Store{},
+		&model.User{},
+	}
+
+	for _, table := range tables {
+		if err := db.Migrator().DropTable(table); err != nil {
+			log.Printf("Warning: Failed to drop table: %v", err)
+		}
+	}
+
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Printf("Failed to get DB instance: %v", err)
-		return
+		t.Fatalf("Failed to get database instance: %v", err)
 	}
 	sqlDB.Close()
 }
 
-// TruncateAllTables removes all data from tables
-func TruncateAllTables(db *gorm.DB) error {
-	tables := []string{"wishlist_items", "cart_items", "order_items", "orders", "product_options", "products", "stores", "users"}
+func TruncateTables(db *gorm.DB) error {
+	tables := []string{
+		"gold_prices",
+		"password_resets",
+		"stores",
+		"users",
+	}
+
 	for _, table := range tables {
-		if err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)).Error; err != nil {
+		if err := db.Exec(fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", table)).Error; err != nil {
 			return err
 		}
 	}
+
 	return nil
 }

@@ -10,15 +10,9 @@ import (
 type Router struct {
 	authController      *controller.AuthController
 	storeController     *controller.StoreController
-	productController   *controller.ProductController
-	cartController      *controller.CartController
-	orderController     *controller.OrderController
-	paymentController   *controller.PaymentController
-	wishlistController  *controller.WishlistController
-	addressController   *controller.AddressController
-	sellerController    *controller.SellerController
-	uploadController    *controller.UploadController
 	goldPriceController *controller.GoldPriceController
+	communityController *controller.CommunityController
+	reviewController    *controller.ReviewController
 	authMiddleware      *middleware.AuthMiddleware
 	config              *config.Config
 }
@@ -26,30 +20,18 @@ type Router struct {
 func NewRouter(
 	authController *controller.AuthController,
 	storeController *controller.StoreController,
-	productController *controller.ProductController,
-	cartController *controller.CartController,
-	orderController *controller.OrderController,
-	paymentController *controller.PaymentController,
-	wishlistController *controller.WishlistController,
-	addressController *controller.AddressController,
-	sellerController *controller.SellerController,
-	uploadController *controller.UploadController,
 	goldPriceController *controller.GoldPriceController,
+	communityController *controller.CommunityController,
+	reviewController *controller.ReviewController,
 	authMiddleware *middleware.AuthMiddleware,
 	cfg *config.Config,
 ) *Router {
 	return &Router{
 		authController:      authController,
 		storeController:     storeController,
-		productController:   productController,
-		cartController:      cartController,
-		orderController:     orderController,
-		paymentController:   paymentController,
-		wishlistController:  wishlistController,
-		addressController:   addressController,
-		sellerController:    sellerController,
-		uploadController:    uploadController,
 		goldPriceController: goldPriceController,
+		communityController: communityController,
+		reviewController:    reviewController,
 		authMiddleware:      authMiddleware,
 		config:              cfg,
 	}
@@ -92,126 +74,58 @@ func (r *Router) Setup() *gin.Engine {
 			stores.GET("/:id", r.storeController.GetStoreByID)
 			stores.POST("",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("seller", "admin"),
+				r.authMiddleware.RequireRole("admin"),
 				r.storeController.CreateStore,
 			)
 			stores.PUT("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("seller", "admin"),
+				r.authMiddleware.RequireRole("admin"),
 				r.storeController.UpdateStore,
 			)
 			stores.DELETE("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("seller", "admin"),
+				r.authMiddleware.RequireRole("admin"),
 				r.storeController.DeleteStore,
 			)
-		}
 
-		products := v1.Group("/products")
-		{
-			products.GET("", r.productController.GetAllProducts)
-			products.GET("/filters", r.productController.GetProductFilters)
-			products.GET("/popular", r.productController.GetPopularProducts)
-			products.GET("/:id", r.productController.GetProductByID)
-
-			products.POST("",
+			// Store reviews
+			stores.POST("/:id/reviews",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("seller", "admin"),
-				r.productController.CreateProduct,
+				r.reviewController.CreateReview,
 			)
-			products.PUT("/:id",
+			stores.GET("/:id/reviews", r.reviewController.GetStoreReviews)
+
+			// Store statistics
+			stores.GET("/:id/stats", r.reviewController.GetStoreStatistics)
+
+			// Store gallery
+			stores.GET("/:id/gallery", r.reviewController.GetStoreGallery)
+		}
+
+		// Users routes
+		users := v1.Group("/users")
+		{
+			users.GET("/me/reviews",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("seller", "admin"),
-				r.productController.UpdateProduct,
+				r.reviewController.GetUserReviews,
 			)
-			products.DELETE("/:id",
+		}
+
+		// Reviews routes
+		reviews := v1.Group("/reviews")
+		{
+			reviews.PUT("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("seller", "admin"),
-				r.productController.DeleteProduct,
+				r.reviewController.UpdateReview,
 			)
-		}
-
-		cart := v1.Group("/cart")
-		cart.Use(r.authMiddleware.Authenticate())
-		{
-			cart.GET("", r.cartController.GetCart)
-			cart.POST("", r.cartController.AddToCart)
-			cart.PUT("/:id", r.cartController.UpdateCartItem)
-			cart.DELETE("/:id", r.cartController.RemoveFromCart)
-			cart.DELETE("", r.cartController.ClearCart)
-		}
-
-		orders := v1.Group("/orders")
-		orders.Use(r.authMiddleware.Authenticate())
-		{
-			orders.GET("", r.orderController.GetOrders)
-			orders.GET("/:id", r.orderController.GetOrderByID)
-			orders.POST("", r.orderController.CreateOrder)
-
-			orders.PUT("/:id/status",
-				r.authMiddleware.RequireRole("admin"),
-				r.orderController.UpdateOrderStatus,
+			reviews.DELETE("/:id",
+				r.authMiddleware.Authenticate(),
+				r.reviewController.DeleteReview,
 			)
-			orders.PUT("/:id/payment", r.orderController.UpdatePaymentStatus)
-		}
-
-		payments := v1.Group("/payments")
-		{
-			// Kakao Pay routes
-			kakao := payments.Group("/kakao")
-			{
-				// Authenticated routes
-				kakao.POST("/ready",
-					r.authMiddleware.Authenticate(),
-					r.paymentController.InitiatePayment,
-				)
-				kakao.POST("/:orderID/refund",
-					r.authMiddleware.Authenticate(),
-					r.paymentController.RefundPayment,
-				)
-				kakao.GET("/status/:orderID",
-					r.authMiddleware.Authenticate(),
-					r.paymentController.GetPaymentStatus,
-				)
-
-				// Callback routes (no authentication required)
-				kakao.GET("/success", r.paymentController.PaymentSuccess)
-				kakao.GET("/fail", r.paymentController.PaymentFail)
-				kakao.GET("/cancel", r.paymentController.PaymentCancel)
-			}
-		}
-
-		wishlist := v1.Group("/wishlist")
-		wishlist.Use(r.authMiddleware.Authenticate())
-		{
-			wishlist.GET("", r.wishlistController.GetWishlist)
-			wishlist.POST("", r.wishlistController.AddToWishlist)
-			wishlist.DELETE("/:product_id", r.wishlistController.RemoveFromWishlist)
-		}
-
-		addresses := v1.Group("/addresses")
-		addresses.Use(r.authMiddleware.Authenticate())
-		{
-			addresses.GET("", r.addressController.ListAddresses)
-			addresses.POST("", r.addressController.CreateAddress)
-			addresses.PUT("/:id", r.addressController.UpdateAddress)
-			addresses.DELETE("/:id", r.addressController.DeleteAddress)
-			addresses.PUT("/:id/default", r.addressController.SetDefaultAddress)
-		}
-
-		seller := v1.Group("/seller")
-		seller.Use(r.authMiddleware.Authenticate())
-		{
-			seller.GET("/stores", r.sellerController.ListMyStores)
-			seller.GET("/dashboard", r.sellerController.GetDashboard)
-			seller.GET("/stores/:store_id/orders", r.sellerController.GetStoreOrders)
-			seller.PUT("/orders/:id/status", r.sellerController.UpdateOrderStatus)
-		}
-
-		upload := v1.Group("/upload")
-		upload.Use(r.authMiddleware.Authenticate())
-		{
-			upload.POST("/presigned-url", r.uploadController.GeneratePresignedURL)
+			reviews.POST("/:id/like",
+				r.authMiddleware.Authenticate(),
+				r.reviewController.ToggleReviewLike,
+			)
 		}
 
 		goldPrices := v1.Group("/gold-prices")
@@ -237,6 +151,71 @@ func (r *Router) Setup() *gin.Engine {
 				r.authMiddleware.RequireRole("admin"),
 				r.goldPriceController.UpdateFromExternalAPI,
 			)
+		}
+
+		// Community (금광산) routes
+		community := v1.Group("/community")
+		{
+			// Post routes
+			posts := community.Group("/posts")
+			{
+				// Public routes (일부는 인증 선택)
+				posts.GET("", r.communityController.GetPosts)               // 게시글 목록 (필터링)
+				posts.GET("/:id", r.communityController.GetPost)            // 게시글 상세 조회
+
+				// Authenticated routes
+				posts.POST("",
+					r.authMiddleware.Authenticate(),
+					r.communityController.CreatePost,
+				)
+				posts.PUT("/:id",
+					r.authMiddleware.Authenticate(),
+					r.communityController.UpdatePost,
+				)
+				posts.DELETE("/:id",
+					r.authMiddleware.Authenticate(),
+					r.communityController.DeletePost,
+				)
+
+				// Like
+				posts.POST("/:id/like",
+					r.authMiddleware.Authenticate(),
+					r.communityController.TogglePostLike,
+				)
+
+				// QnA - Accept answer
+				posts.POST("/:id/accept/:comment_id",
+					r.authMiddleware.Authenticate(),
+					r.communityController.AcceptAnswer,
+				)
+			}
+
+			// Comment routes
+			comments := community.Group("/comments")
+			{
+				// Public routes
+				comments.GET("", r.communityController.GetComments)         // 댓글 목록
+
+				// Authenticated routes
+				comments.POST("",
+					r.authMiddleware.Authenticate(),
+					r.communityController.CreateComment,
+				)
+				comments.PUT("/:id",
+					r.authMiddleware.Authenticate(),
+					r.communityController.UpdateComment,
+				)
+				comments.DELETE("/:id",
+					r.authMiddleware.Authenticate(),
+					r.communityController.DeleteComment,
+				)
+
+				// Like
+				comments.POST("/:id/like",
+					r.authMiddleware.Authenticate(),
+					r.communityController.ToggleCommentLike,
+				)
+			}
 		}
 	}
 

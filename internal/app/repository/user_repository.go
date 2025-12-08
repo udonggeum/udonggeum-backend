@@ -9,6 +9,7 @@ import (
 type UserRepository interface {
 	Create(user *model.User) error
 	FindByID(id uint) (*model.User, error)
+	FindByIDWithStores(id uint) (*model.User, error)
 	FindByEmail(email string) (*model.User, error)
 	Update(user *model.User) error
 	Delete(id uint) error
@@ -58,6 +59,28 @@ func (r *userRepository) FindByID(id uint) (*model.User, error) {
 	logger.Debug("User found by ID in database", map[string]interface{}{
 		"user_id": user.ID,
 		"email":   user.Email,
+	})
+	return &user, nil
+}
+
+func (r *userRepository) FindByIDWithStores(id uint) (*model.User, error) {
+	logger.Debug("Finding user by ID with stores in database", map[string]interface{}{
+		"user_id": id,
+	})
+
+	var user model.User
+	err := r.db.Preload("Stores").First(&user, id).Error
+	if err != nil {
+		logger.Error("Failed to find user by ID with stores in database", err, map[string]interface{}{
+			"user_id": id,
+		})
+		return nil, err
+	}
+
+	logger.Debug("User with stores found by ID in database", map[string]interface{}{
+		"user_id":     user.ID,
+		"email":       user.Email,
+		"store_count": len(user.Stores),
 	})
 	return &user, nil
 }
