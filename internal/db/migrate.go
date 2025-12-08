@@ -1,6 +1,9 @@
 package db
 
 import (
+	"math/rand"
+	"time"
+
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 	"github.com/ikkim/udonggeum-backend/pkg/util"
@@ -21,6 +24,7 @@ func Migrate() error {
 		&model.WishlistItem{},
 		&model.Address{},
 		&model.PasswordReset{},
+		&model.GoldPrice{},
 	}
 
 	if err := DB.AutoMigrate(models...); err != nil {
@@ -54,9 +58,14 @@ func seedInitialData() error {
 	}
 
 	if storeCount > 0 {
-		logger.Info("Database already seeded, skipping...", map[string]interface{}{
+		logger.Info("Store data already seeded, skipping store seeding...", map[string]interface{}{
 			"existing_stores": storeCount,
 		})
+		// Store 데이터는 스킵하지만 금 시세는 별도로 체크
+		if err := seedGoldPrices(); err != nil {
+			logger.Error("Failed to seed gold prices", err)
+			return err
+		}
 		return nil
 	}
 
@@ -95,6 +104,8 @@ func seedInitialData() error {
 				Region:      "서울특별시",
 				District:    "강남구",
 				Address:     "서울특별시 강남구 테헤란로 231",
+				Latitude:    func() *float64 { lat := 37.5029; return &lat }(),
+				Longitude:   func() *float64 { lng := 127.0398; return &lng }(),
 				PhoneNumber: "02-6201-1100",
 				ImageURL:    "https://cdn.udonggeum.com/stores/seoul-gangnam.jpg",
 				Description: "프리미엄 골드와 다이아몬드 라인을 전문으로 소개하는 플래그십 스토어",
@@ -210,6 +221,8 @@ func seedInitialData() error {
 				Region:      "서울특별시",
 				District:    "마포구",
 				Address:     "서울특별시 마포구 와우산로 94",
+				Latitude:    func() *float64 { lat := 37.5490; return &lat }(),
+				Longitude:   func() *float64 { lng := 126.9251; return &lng }(),
 				PhoneNumber: "02-6284-9077",
 				ImageURL:    "https://cdn.udonggeum.com/stores/seoul-mapogu.jpg",
 				Description: "데일리 주얼리와 커플 라인을 중심으로 구성된 라이프스타일 매장",
@@ -291,6 +304,8 @@ func seedInitialData() error {
 				Region:      "부산광역시",
 				District:    "해운대구",
 				Address:     "부산광역시 해운대구 해운대로 570",
+				Latitude:    func() *float64 { lat := 35.1586; return &lat }(),
+				Longitude:   func() *float64 { lng := 129.1603; return &lng }(),
 				PhoneNumber: "051-730-1122",
 				ImageURL:    "https://cdn.udonggeum.com/stores/busan-haeundae.jpg",
 				Description: "해변 감성을 담은 프리미엄 주얼리와 웨딩 라인 전문점",
@@ -406,6 +421,8 @@ func seedInitialData() error {
 				Region:      "부산광역시",
 				District:    "중구",
 				Address:     "부산광역시 중구 광복로 55",
+				Latitude:    func() *float64 { lat := 35.0985; return &lat }(),
+				Longitude:   func() *float64 { lng := 129.0297; return &lng }(),
 				PhoneNumber: "051-245-7755",
 				ImageURL:    "https://cdn.udonggeum.com/stores/busan-nampo.jpg",
 				Description: "전통 금장과 예물 세트에 특화된 남포동 대표 매장",
@@ -487,6 +504,8 @@ func seedInitialData() error {
 				Region:      "대구광역시",
 				District:    "중구",
 				Address:     "대구광역시 중구 동성로4길 91",
+				Latitude:    func() *float64 { lat := 35.8691; return &lat }(),
+				Longitude:   func() *float64 { lng := 128.5936; return &lng }(),
 				PhoneNumber: "053-222-4411",
 				ImageURL:    "https://cdn.udonggeum.com/stores/daegu-dongseongno.jpg",
 				Description: "최신 트렌드 주얼리를 빠르게 소개하는 젊은 감성 매장",
@@ -568,6 +587,8 @@ func seedInitialData() error {
 				Region:      "대구광역시",
 				District:    "수성구",
 				Address:     "대구광역시 수성구 달구벌대로 2440",
+				Latitude:    func() *float64 { lat := 35.8582; return &lat }(),
+				Longitude:   func() *float64 { lng := 128.6318; return &lng }(),
 				PhoneNumber: "053-791-5599",
 				ImageURL:    "https://cdn.udonggeum.com/stores/daegu-suseong.jpg",
 				Description: "클래식 라인과 프리미엄 소재를 중심으로 구성된 컬렉션",
@@ -683,6 +704,8 @@ func seedInitialData() error {
 				Region:      "광주광역시",
 				District:    "동구",
 				Address:     "광주광역시 동구 충장로 73",
+				Latitude:    func() *float64 { lat := 35.1483; return &lat }(),
+				Longitude:   func() *float64 { lng := 126.9174; return &lng }(),
 				PhoneNumber: "062-228-9090",
 				ImageURL:    "https://cdn.udonggeum.com/stores/gwangju-chungjang.jpg",
 				Description: "작가 협업 컬렉션과 예술적 감성의 주얼리를 선보이는 매장",
@@ -764,6 +787,8 @@ func seedInitialData() error {
 				Region:      "광주광역시",
 				District:    "서구",
 				Address:     "광주광역시 서구 상무자유로 173",
+				Latitude:    func() *float64 { lat := 35.1520; return &lat }(),
+				Longitude:   func() *float64 { lng := 126.8842; return &lng }(),
 				PhoneNumber: "062-415-3322",
 				ImageURL:    "https://cdn.udonggeum.com/stores/gwangju-sangmu.jpg",
 				Description: "비즈니스 캐주얼에 어울리는 주얼리를 제안하는 매장",
@@ -879,6 +904,8 @@ func seedInitialData() error {
 				Region:      "제주특별자치도",
 				District:    "제주시",
 				Address:     "제주특별자치도 제주시 연북로 567",
+				Latitude:    func() *float64 { lat := 33.4890; return &lat }(),
+				Longitude:   func() *float64 { lng := 126.4914; return &lng }(),
 				PhoneNumber: "064-723-5565",
 				ImageURL:    "https://cdn.udonggeum.com/stores/jeju-shinjeju.jpg",
 				Description: "제주의 자연을 모티브로 한 감성 주얼리 전문 매장",
@@ -960,6 +987,8 @@ func seedInitialData() error {
 				Region:      "제주특별자치도",
 				District:    "서귀포시",
 				Address:     "제주특별자치도 서귀포시 중문관광로 72",
+				Latitude:    func() *float64 { lat := 33.2531; return &lat }(),
+				Longitude:   func() *float64 { lng := 126.4119; return &lng }(),
 				PhoneNumber: "064-739-8844",
 				ImageURL:    "https://cdn.udonggeum.com/stores/jeju-seogwipo.jpg",
 				Description: "바다를 모티브로 한 주얼리를 만날 수 있는 해안가 매장",
@@ -1092,10 +1121,95 @@ func seedInitialData() error {
 		}
 	}
 
+	// 금 시세 더미 데이터 생성 (최근 30일)
+	if err := seedGoldPrices(); err != nil {
+		logger.Error("Failed to seed gold prices", err)
+		return err
+	}
+
 	logger.Info("Database seeded successfully", map[string]interface{}{
 		"stores_count":   totalStores,
 		"products_count": totalProducts,
 		"options_count":  totalOptions,
 	})
+	return nil
+}
+
+// seedGoldPrices 금 시세 더미 데이터 생성 (최근 30일)
+func seedGoldPrices() error {
+	var count int64
+	if err := DB.Model(&model.GoldPrice{}).Count(&count).Error; err != nil {
+		return err
+	}
+
+	if count > 0 {
+		logger.Info("Gold prices already seeded, skipping...", map[string]interface{}{
+			"existing_count": count,
+		})
+		return nil
+	}
+
+	logger.Info("Seeding gold price data for last 30 days...")
+
+	// 기준 시세 (원/g) - 최근 실제 시세 기준
+	basePrice24K := 199611.37
+	basePrice18K := 149708.53
+	basePrice14K := 116439.97
+
+	now := time.Now()
+	totalInserted := 0
+
+	// 최근 30일간 매일 시세 생성
+	for i := 29; i >= 0; i-- {
+		date := now.AddDate(0, 0, -i)
+
+		// 날짜별로 약간의 변동성 추가 (-2% ~ +2%)
+		variance := (rand.Float64() - 0.5) * 0.04 // -0.02 ~ +0.02
+
+		price24K := basePrice24K * (1 + variance)
+		price18K := basePrice18K * (1 + variance)
+		price14K := basePrice14K * (1 + variance)
+
+		goldPrices := []model.GoldPrice{
+			{
+				Type:        model.Gold24K,
+				BuyPrice:    price24K * 0.98, // 매입가: 현재가의 98%
+				SellPrice:   price24K * 1.02, // 매도가: 현재가의 102%
+				Source:      "GOLDAPI",
+				SourceDate:  date,
+				Description: "자동 생성된 더미 데이터",
+			},
+			{
+				Type:        model.Gold18K,
+				BuyPrice:    price18K * 0.98,
+				SellPrice:   price18K * 1.02,
+				Source:      "GOLDAPI",
+				SourceDate:  date,
+				Description: "자동 생성된 더미 데이터",
+			},
+			{
+				Type:        model.Gold14K,
+				BuyPrice:    price14K * 0.98,
+				SellPrice:   price14K * 1.02,
+				Source:      "GOLDAPI",
+				SourceDate:  date,
+				Description: "자동 생성된 더미 데이터",
+			},
+		}
+
+		for _, goldPrice := range goldPrices {
+			if err := DB.Create(&goldPrice).Error; err != nil {
+				logger.Error("Failed to create gold price", err)
+				return err
+			}
+			totalInserted++
+		}
+	}
+
+	logger.Info("Gold prices seeded successfully", map[string]interface{}{
+		"total_records": totalInserted,
+		"days":          30,
+	})
+
 	return nil
 }

@@ -10,12 +10,14 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
-	CORS     CORSConfig
-	Payment  PaymentConfig
-	S3       S3Config
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Redis     RedisConfig
+	JWT       JWTConfig
+	CORS      CORSConfig
+	Payment   PaymentConfig
+	S3        S3Config
+	GoldPrice GoldPriceConfig
 }
 
 type ServerConfig struct {
@@ -31,6 +33,13 @@ type DatabaseConfig struct {
 	Password string
 	DBName   string
 	SSLMode  string
+}
+
+type RedisConfig struct {
+	Host     string
+	Port     string
+	Password string
+	DB       int
 }
 
 type JWTConfig struct {
@@ -64,6 +73,11 @@ type S3Config struct {
 	BaseURL         string // CloudFront or S3 direct URL
 }
 
+type GoldPriceConfig struct {
+	APIURL string
+	APIKey string
+}
+
 func Load() (*Config, error) {
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
@@ -83,6 +97,12 @@ func Load() (*Config, error) {
 			Password: getEnv("DB_PASSWORD", "1234"),
 			DBName:   getEnv("DB_NAME", "udonggeum"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+		},
+		Redis: RedisConfig{
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     getEnv("REDIS_PORT", "6379"),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       parseInt(getEnv("REDIS_DB", "0")),
 		},
 		JWT: JWTConfig{
 			Secret:             getEnv("JWT_SECRET", "your-secret-key"),
@@ -108,6 +128,10 @@ func Load() (*Config, error) {
 			AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
 			SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
 			BaseURL:         getEnv("AWS_S3_BASE_URL", ""),
+		},
+		GoldPrice: GoldPriceConfig{
+			APIURL: getEnv("GOLD_PRICE_API_URL", ""),
+			APIKey: getEnv("GOLD_PRICE_API_KEY", ""),
 		},
 	}
 
@@ -150,5 +174,11 @@ func parseSlice(s string) []string {
 		result = append(result, s[i:end])
 		i = end + 1
 	}
+	return result
+}
+
+func parseInt(s string) int {
+	var result int
+	fmt.Sscanf(s, "%d", &result)
 	return result
 }

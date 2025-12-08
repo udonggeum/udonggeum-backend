@@ -20,26 +20,30 @@ func NewStoreController(storeService service.StoreService) *StoreController {
 }
 
 type StoreRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Region      string `json:"region" binding:"required"`
-	District    string `json:"district" binding:"required"`
-	Address     string `json:"address"`
-	PhoneNumber string `json:"phone_number"`
-	ImageURL    string `json:"image_url"`
-	Description string `json:"description"`
-	OpenTime    string `json:"open_time"`
-	CloseTime   string `json:"close_time"`
+	Name        string   `json:"name" binding:"required"`
+	Region      string   `json:"region" binding:"required"`
+	District    string   `json:"district" binding:"required"`
+	Address     string   `json:"address"`
+	Latitude    *float64 `json:"latitude"`
+	Longitude   *float64 `json:"longitude"`
+	PhoneNumber string   `json:"phone_number"`
+	ImageURL    string   `json:"image_url"`
+	Description string   `json:"description"`
+	OpenTime    string   `json:"open_time"`
+	CloseTime   string   `json:"close_time"`
 }
 
 func (ctrl *StoreController) ListStores(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 
 	includeProducts := strings.EqualFold(c.DefaultQuery("include_products", "false"), "true")
+	buyingGold := strings.EqualFold(c.DefaultQuery("buying", "false"), "true")
 	opts := service.StoreListOptions{
 		Region:          c.Query("region"),
 		District:        c.Query("district"),
 		Search:          c.Query("search"),
 		IncludeProducts: includeProducts,
+		BuyingGold:      buyingGold,
 	}
 
 	stores, err := ctrl.storeService.ListStores(opts)
@@ -138,6 +142,8 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		Region:      req.Region,
 		District:    req.District,
 		Address:     req.Address,
+		Latitude:    req.Latitude,
+		Longitude:   req.Longitude,
 		PhoneNumber: req.PhoneNumber,
 		ImageURL:    req.ImageURL,
 		Description: req.Description,
@@ -211,6 +217,8 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 		Region:      req.Region,
 		District:    req.District,
 		Address:     req.Address,
+		Latitude:    req.Latitude,
+		Longitude:   req.Longitude,
 		PhoneNumber: req.PhoneNumber,
 		ImageURL:    req.ImageURL,
 		Description: req.Description,
