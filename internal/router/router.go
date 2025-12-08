@@ -8,18 +8,19 @@ import (
 )
 
 type Router struct {
-	authController     *controller.AuthController
-	storeController    *controller.StoreController
-	productController  *controller.ProductController
-	cartController     *controller.CartController
-	orderController    *controller.OrderController
-	paymentController  *controller.PaymentController
-	wishlistController *controller.WishlistController
-	addressController  *controller.AddressController
-	sellerController   *controller.SellerController
-	uploadController   *controller.UploadController
-	authMiddleware     *middleware.AuthMiddleware
-	config             *config.Config
+	authController      *controller.AuthController
+	storeController     *controller.StoreController
+	productController   *controller.ProductController
+	cartController      *controller.CartController
+	orderController     *controller.OrderController
+	paymentController   *controller.PaymentController
+	wishlistController  *controller.WishlistController
+	addressController   *controller.AddressController
+	sellerController    *controller.SellerController
+	uploadController    *controller.UploadController
+	goldPriceController *controller.GoldPriceController
+	authMiddleware      *middleware.AuthMiddleware
+	config              *config.Config
 }
 
 func NewRouter(
@@ -33,22 +34,24 @@ func NewRouter(
 	addressController *controller.AddressController,
 	sellerController *controller.SellerController,
 	uploadController *controller.UploadController,
+	goldPriceController *controller.GoldPriceController,
 	authMiddleware *middleware.AuthMiddleware,
 	cfg *config.Config,
 ) *Router {
 	return &Router{
-		authController:     authController,
-		storeController:    storeController,
-		productController:  productController,
-		cartController:     cartController,
-		orderController:    orderController,
-		paymentController:  paymentController,
-		wishlistController: wishlistController,
-		addressController:  addressController,
-		sellerController:   sellerController,
-		uploadController:   uploadController,
-		authMiddleware:     authMiddleware,
-		config:             cfg,
+		authController:      authController,
+		storeController:     storeController,
+		productController:   productController,
+		cartController:      cartController,
+		orderController:     orderController,
+		paymentController:   paymentController,
+		wishlistController:  wishlistController,
+		addressController:   addressController,
+		sellerController:    sellerController,
+		uploadController:    uploadController,
+		goldPriceController: goldPriceController,
+		authMiddleware:      authMiddleware,
+		config:              cfg,
 	}
 }
 
@@ -209,6 +212,31 @@ func (r *Router) Setup() *gin.Engine {
 		upload.Use(r.authMiddleware.Authenticate())
 		{
 			upload.POST("/presigned-url", r.uploadController.GeneratePresignedURL)
+		}
+
+		goldPrices := v1.Group("/gold-prices")
+		{
+			// Public routes
+			goldPrices.GET("/latest", r.goldPriceController.GetLatestPrices)
+			goldPrices.GET("/type/:type", r.goldPriceController.GetPriceByType)
+			goldPrices.GET("/history/:type", r.goldPriceController.GetPriceHistory)
+
+			// Admin routes
+			goldPrices.POST("",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.goldPriceController.CreatePrice,
+			)
+			goldPrices.PUT("/:id",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.goldPriceController.UpdatePrice,
+			)
+			goldPrices.POST("/update",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.goldPriceController.UpdateFromExternalAPI,
+			)
 		}
 	}
 
