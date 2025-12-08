@@ -10,13 +10,14 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	JWT      JWTConfig
-	CORS     CORSConfig
-	Payment  PaymentConfig
-	S3       S3Config
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Redis     RedisConfig
+	JWT       JWTConfig
+	CORS      CORSConfig
+	Payment   PaymentConfig
+	S3        S3Config
+	GoldPrice GoldPriceConfig
 }
 
 type ServerConfig struct {
@@ -72,6 +73,11 @@ type S3Config struct {
 	BaseURL         string // CloudFront or S3 direct URL
 }
 
+type GoldPriceConfig struct {
+	APIURL string
+	APIKey string
+}
+
 func Load() (*Config, error) {
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
@@ -122,6 +128,10 @@ func Load() (*Config, error) {
 			AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
 			SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
 			BaseURL:         getEnv("AWS_S3_BASE_URL", ""),
+		},
+		GoldPrice: GoldPriceConfig{
+			APIURL: getEnv("GOLD_PRICE_API_URL", ""),
+			APIKey: getEnv("GOLD_PRICE_API_KEY", ""),
 		},
 	}
 

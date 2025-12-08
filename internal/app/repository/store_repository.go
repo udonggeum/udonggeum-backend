@@ -11,6 +11,7 @@ type StoreFilter struct {
 	District        string
 	Search          string
 	IncludeProducts bool
+	BuyingGold      bool // 금 매입 가능 매장만 조회
 }
 
 type StoreLocation struct {
@@ -125,6 +126,9 @@ func (r *storeRepository) FindAll(filter StoreFilter) ([]model.Store, error) {
 	if filter.Search != "" {
 		like := "%" + filter.Search + "%"
 		query = query.Where("name LIKE ?", like)
+	}
+	if filter.BuyingGold {
+		query = query.Where("buying_gold = ?", true)
 	}
 
 	var stores []model.Store
