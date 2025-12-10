@@ -27,10 +27,12 @@ type StoreRequest struct {
 	Latitude    *float64 `json:"latitude"`
 	Longitude   *float64 `json:"longitude"`
 	PhoneNumber string   `json:"phone_number"`
+	Phone       string   `json:"phone"`       // 프론트엔드 호환성을 위한 별칭
 	ImageURL    string   `json:"image_url"`
 	Description string   `json:"description"`
 	OpenTime    string   `json:"open_time"`
 	CloseTime   string   `json:"close_time"`
+	Tags        []string `json:"tags"` // 매장 태그 배열
 }
 
 func (ctrl *StoreController) ListStores(c *gin.Context) {
@@ -136,6 +138,12 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		return
 	}
 
+	// Phone 필드 우선, 없으면 PhoneNumber 사용
+	phoneNumber := req.PhoneNumber
+	if req.Phone != "" {
+		phoneNumber = req.Phone
+	}
+
 	store := &model.Store{
 		UserID:      userID,
 		Name:        req.Name,
@@ -144,11 +152,12 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		Address:     req.Address,
 		Latitude:    req.Latitude,
 		Longitude:   req.Longitude,
-		PhoneNumber: req.PhoneNumber,
+		PhoneNumber: phoneNumber,
 		ImageURL:    req.ImageURL,
 		Description: req.Description,
 		OpenTime:    req.OpenTime,
 		CloseTime:   req.CloseTime,
+		Tags:        model.StringArray(req.Tags),
 	}
 
 	created, err := ctrl.storeService.CreateStore(store)
@@ -224,6 +233,7 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 		Description: req.Description,
 		OpenTime:    req.OpenTime,
 		CloseTime:   req.CloseTime,
+		Tags:        model.StringArray(req.Tags),
 	})
 	if err != nil {
 		switch err {

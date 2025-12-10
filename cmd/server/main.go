@@ -14,6 +14,7 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
 	"github.com/ikkim/udonggeum-backend/internal/router"
 	"github.com/ikkim/udonggeum-backend/internal/scheduler"
+	"github.com/ikkim/udonggeum-backend/internal/storage"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 	redisClient "github.com/ikkim/udonggeum-backend/pkg/redis"
 )
@@ -84,7 +85,7 @@ func main() {
 		cfg.JWT.RefreshTokenExpiry,
 	)
 	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
-	storeService := service.NewStoreService(storeRepo)
+	storeService := service.NewStoreService(storeRepo, userRepo)
 
 	goldPriceAPI := service.NewDefaultGoldPriceAPI(cfg.GoldPrice.APIURL, cfg.GoldPrice.APIKey)
 	goldPriceService := service.NewGoldPriceService(goldPriceRepo, goldPriceAPI)
@@ -92,11 +93,21 @@ func main() {
 	communityService := service.NewCommunityService(communityRepo, userRepo)
 	reviewService := service.NewReviewService(reviewRepo, storeRepo)
 
+	// Initialize S3 storage
+	s3Storage := storage.NewS3Storage(
+		cfg.S3.Region,
+		cfg.S3.Bucket,
+		cfg.S3.AccessKeyID,
+		cfg.S3.SecretAccessKey,
+		cfg.S3.BaseURL,
+	)
+
 	authController := controller.NewAuthController(authService, passwordResetService)
 	storeController := controller.NewStoreController(storeService)
 	goldPriceController := controller.NewGoldPriceController(goldPriceService)
 	communityController := controller.NewCommunityController(communityService)
 	reviewController := controller.NewReviewController(reviewService)
+	uploadController := controller.NewUploadController(s3Storage)
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
@@ -106,6 +117,7 @@ func main() {
 		goldPriceController,
 		communityController,
 		reviewController,
+		uploadController,
 		authMiddleware,
 		cfg,
 	)

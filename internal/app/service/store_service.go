@@ -40,6 +40,7 @@ type StoreService interface {
 
 type storeService struct {
 	storeRepo repository.StoreRepository
+	userRepo  repository.UserRepository
 }
 
 type StoreMutation struct {
@@ -54,10 +55,14 @@ type StoreMutation struct {
 	Description string
 	OpenTime    string
 	CloseTime   string
+	Tags        model.StringArray
 }
 
-func NewStoreService(storeRepo repository.StoreRepository) StoreService {
-	return &storeService{storeRepo: storeRepo}
+func NewStoreService(storeRepo repository.StoreRepository, userRepo repository.UserRepository) StoreService {
+	return &storeService{
+		storeRepo: storeRepo,
+		userRepo:  userRepo,
+	}
 }
 
 func (s *storeService) ListStores(opts StoreListOptions) ([]model.Store, error) {
@@ -140,6 +145,25 @@ func (s *storeService) CreateStore(store *model.Store) (*model.Store, error) {
 		return nil, err
 	}
 
+	// Update user's nickname to store name for admin users
+	user, err := s.userRepo.FindByID(store.UserID)
+	if err == nil && user.Role == model.RoleAdmin {
+		user.Nickname = store.Name
+		if err := s.userRepo.Update(user); err != nil {
+			logger.Warn("Failed to update user nickname after store creation", map[string]interface{}{
+				"user_id":    store.UserID,
+				"store_name": store.Name,
+				"error":      err.Error(),
+			})
+			// Don't fail the entire operation if nickname update fails
+		} else {
+			logger.Info("User nickname updated to store name", map[string]interface{}{
+				"user_id": store.UserID,
+				"nickname": store.Name,
+			})
+		}
+	}
+
 	logger.Info("Store created", map[string]interface{}{
 		"store_id": store.ID,
 		"name":     store.Name,
@@ -175,6 +199,9 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 		return nil, ErrStoreAccessDenied
 	}
 
+	// Check if store name changed
+	storeNameChanged := existing.Name != input.Name
+
 	existing.Name = input.Name
 	existing.Region = input.Region
 	existing.District = input.District
@@ -184,6 +211,7 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 	existing.PhoneNumber = input.PhoneNumber
 	existing.ImageURL = input.ImageURL
 	existing.Description = input.Description
+	existing.Tags = input.Tags
 	existing.OpenTime = input.OpenTime
 	existing.CloseTime = input.CloseTime
 
@@ -192,6 +220,27 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 			"store_id": storeID,
 		})
 		return nil, err
+	}
+
+	// Update user's nickname to new store name if it changed and user is admin
+	if storeNameChanged {
+		user, err := s.userRepo.FindByID(userID)
+		if err == nil && user.Role == model.RoleAdmin {
+			user.Nickname = input.Name
+			if err := s.userRepo.Update(user); err != nil {
+				logger.Warn("Failed to update user nickname after store name change", map[string]interface{}{
+					"user_id":    userID,
+					"store_name": input.Name,
+					"error":      err.Error(),
+				})
+				// Don't fail the entire operation if nickname update fails
+			} else {
+				logger.Info("User nickname updated to new store name", map[string]interface{}{
+					"user_id":  userID,
+					"nickname": input.Name,
+				})
+			}
+		}
 	}
 
 	logger.Info("Store updated", map[string]interface{}{

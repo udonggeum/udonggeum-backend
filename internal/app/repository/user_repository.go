@@ -11,6 +11,7 @@ type UserRepository interface {
 	FindByID(id uint) (*model.User, error)
 	FindByIDWithStores(id uint) (*model.User, error)
 	FindByEmail(email string) (*model.User, error)
+	FindByNickname(nickname string) (*model.User, error)
 	Update(user *model.User) error
 	Delete(id uint) error
 }
@@ -102,6 +103,27 @@ func (r *userRepository) FindByEmail(email string) (*model.User, error) {
 	logger.Debug("User found by email in database", map[string]interface{}{
 		"user_id": user.ID,
 		"email":   user.Email,
+	})
+	return &user, nil
+}
+
+func (r *userRepository) FindByNickname(nickname string) (*model.User, error) {
+	logger.Debug("Finding user by nickname in database", map[string]interface{}{
+		"nickname": nickname,
+	})
+
+	var user model.User
+	err := r.db.Where("nickname = ?", nickname).First(&user).Error
+	if err != nil {
+		logger.Error("Failed to find user by nickname in database", err, map[string]interface{}{
+			"nickname": nickname,
+		})
+		return nil, err
+	}
+
+	logger.Debug("User found by nickname in database", map[string]interface{}{
+		"user_id":  user.ID,
+		"nickname": user.Nickname,
 	})
 	return &user, nil
 }

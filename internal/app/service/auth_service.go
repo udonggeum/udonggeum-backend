@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
@@ -14,19 +15,21 @@ import (
 )
 
 var (
-	ErrEmailAlreadyExists = errors.New("email already exists")
-	ErrInvalidCredentials = errors.New("invalid email or password")
-	ErrUserNotFound       = errors.New("user not found")
-	ErrInvalidToken       = errors.New("invalid token")
-	ErrExpiredToken       = errors.New("token has expired")
-	ErrTokenRevoked       = errors.New("token has been revoked")
+	ErrEmailAlreadyExists    = errors.New("email already exists")
+	ErrInvalidCredentials    = errors.New("invalid email or password")
+	ErrUserNotFound          = errors.New("user not found")
+	ErrInvalidToken          = errors.New("invalid token")
+	ErrExpiredToken          = errors.New("token has expired")
+	ErrTokenRevoked          = errors.New("token has been revoked")
+	ErrNicknameAlreadyExists = errors.New("nickname already exists")
 )
 
 type AuthService interface {
 	Register(email, password, name, phone string) (*model.User, *util.TokenPair, error)
 	Login(email, password string) (*model.User, *util.TokenPair, error)
 	GetUserByID(id uint) (*model.User, error)
-	UpdateProfile(userID uint, name, phone string) (*model.User, error)
+	UpdateProfile(userID uint, name, phone, nickname, address string) (*model.User, error)
+	CheckNickname(nickname string) (bool, error)
 	RefreshToken(refreshToken string) (*util.TokenPair, error)
 	RevokeToken(refreshToken string) error
 }
@@ -81,11 +84,21 @@ func (s *authService) Register(email, password, name, phone string) (*model.User
 		return nil, nil, err
 	}
 
+	// Generate unique nickname
+	nickname, err := s.generateUniqueNickname()
+	if err != nil {
+		logger.Error("Failed to generate unique nickname", err, map[string]interface{}{
+			"email": email,
+		})
+		return nil, nil, err
+	}
+
 	// Create user
 	user := &model.User{
 		Email:        email,
 		PasswordHash: hashedPassword,
 		Name:         name,
+		Nickname:     nickname,
 		Phone:        phone,
 		Role:         model.RoleUser,
 	}
@@ -205,7 +218,7 @@ func (s *authService) GetUserByID(id uint) (*model.User, error) {
 	return user, nil
 }
 
-func (s *authService) UpdateProfile(userID uint, name, phone string) (*model.User, error) {
+func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address string) (*model.User, error) {
 	logger.Info("Updating user profile", map[string]interface{}{
 		"user_id": userID,
 	})
@@ -235,6 +248,37 @@ func (s *authService) UpdateProfile(userID uint, name, phone string) (*model.Use
 		user.Phone = phone
 		updated = true
 	}
+	if nickname != "" && nickname != user.Nickname {
+		// Admin 사용자는 닉네임을 직접 수정할 수 없음 (매장 이름과 자동 동기화됨)
+		if user.Role == model.RoleAdmin {
+			logger.Warn("Admin users cannot update nickname directly", map[string]interface{}{
+				"user_id": userID,
+			})
+			return nil, errors.New("admin users cannot update nickname directly - it is automatically synchronized with store name")
+		}
+
+		// Check if nickname already exists
+		existingUser, err := s.userRepo.FindByNickname(nickname)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Error("Failed to check existing nickname", err, map[string]interface{}{
+				"nickname": nickname,
+			})
+			return nil, err
+		}
+		if existingUser != nil && existingUser.ID != userID {
+			logger.Warn("Nickname already exists", map[string]interface{}{
+				"nickname": nickname,
+			})
+			return nil, ErrNicknameAlreadyExists
+		}
+		user.Nickname = nickname
+		updated = true
+	}
+	// Address can be empty (to clear it), so we don't check for empty string
+	if address != user.Address {
+		user.Address = address
+		updated = true
+	}
 
 	// Only update if there are changes
 	if !updated {
@@ -253,12 +297,39 @@ func (s *authService) UpdateProfile(userID uint, name, phone string) (*model.Use
 	}
 
 	logger.Info("User profile updated successfully", map[string]interface{}{
-		"user_id": user.ID,
-		"name":    user.Name,
-		"phone":   user.Phone,
+		"user_id":  user.ID,
+		"name":     user.Name,
+		"phone":    user.Phone,
+		"nickname": user.Nickname,
+		"address":  user.Address,
 	})
 
 	return user, nil
+}
+
+// CheckNickname checks if a nickname is available
+func (s *authService) CheckNickname(nickname string) (bool, error) {
+	logger.Debug("Checking nickname availability", map[string]interface{}{
+		"nickname": nickname,
+	})
+
+	// Check if nickname already exists
+	existingUser, err := s.userRepo.FindByNickname(nickname)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Error("Failed to check nickname availability", err, map[string]interface{}{
+			"nickname": nickname,
+		})
+		return false, err
+	}
+
+	// If user exists, nickname is not available
+	isAvailable := existingUser == nil
+	logger.Debug("Nickname availability checked", map[string]interface{}{
+		"nickname":    nickname,
+		"is_available": isAvailable,
+	})
+
+	return isAvailable, nil
 }
 
 // RefreshToken validates a refresh token and generates a new token pair
@@ -369,4 +440,42 @@ func (s *authService) RevokeToken(refreshToken string) error {
 
 	logger.Info("Token revoked successfully", nil)
 	return nil
+}
+
+// generateUniqueNickname generates a random unique nickname
+func (s *authService) generateUniqueNickname() (string, error) {
+	const (
+		maxRetries = 10
+		prefix     = "사용자"
+	)
+
+	for i := 0; i < maxRetries; i++ {
+		// Generate random 6-digit number
+		randomNum := util.GenerateRandomNumber(100000, 999999)
+		nickname := fmt.Sprintf("%s%d", prefix, randomNum)
+
+		// Check if nickname already exists
+		existingUser, err := s.userRepo.FindByNickname(nickname)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Error("Failed to check existing nickname", err, map[string]interface{}{
+				"nickname": nickname,
+			})
+			return "", err
+		}
+
+		// If nickname doesn't exist, return it
+		if existingUser == nil {
+			logger.Debug("Generated unique nickname", map[string]interface{}{
+				"nickname": nickname,
+			})
+			return nickname, nil
+		}
+
+		logger.Debug("Nickname already exists, retrying", map[string]interface{}{
+			"nickname": nickname,
+			"attempt":  i + 1,
+		})
+	}
+
+	return "", errors.New("failed to generate unique nickname after maximum retries")
 }

@@ -50,22 +50,23 @@ func (s *communityService) CreatePost(req *model.CreatePostRequest, userID uint,
 		return nil, err
 	}
 
-	// buy_gold 타입일 때 사용자의 매장 ID 자동 설정
+	// Admin 사용자의 경우 매장 ID 자동 설정
 	var storeID *uint
-	if req.Type == model.TypeBuyGold {
-		// Admin만 buy_gold 글 작성 가능 (이미 validatePostCreation에서 검증됨)
+	if userRole == model.RoleAdmin {
 		user, err := s.userRepo.FindByIDWithStores(userID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find user: %v", err)
 		}
 
-		// 매장이 없으면 에러
-		if len(user.Stores) == 0 {
+		// buy_gold 타입인데 매장이 없으면 에러
+		if req.Type == model.TypeBuyGold && len(user.Stores) == 0 {
 			return nil, fmt.Errorf("you must have at least one store to create buy_gold posts")
 		}
 
-		// 첫 번째 매장 사용 (TODO: 나중에 여러 매장이 있을 때 선택하는 UI 필요)
-		storeID = &user.Stores[0].ID
+		// 매장이 있으면 첫 번째 매장 사용 (TODO: 나중에 여러 매장이 있을 때 선택하는 UI 필요)
+		if len(user.Stores) > 0 {
+			storeID = &user.Stores[0].ID
+		}
 	}
 
 	post := &model.CommunityPost{

@@ -3,6 +3,7 @@ package model
 import (
 	"time"
 
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -26,9 +27,9 @@ const (
 	TypeBuyGold PostType = "buy_gold" // 금 매입 홍보
 
 	// 금소식
-	TypeNews   PostType = "news"   // 뉴스/정보
-	TypeReview PostType = "review" // 후기
-	TypeTip    PostType = "tip"    // 팁
+	TypeProductNews PostType = "product_news" // 상품 소식
+	TypeStoreNews   PostType = "store_news"   // 매장 소식
+	TypeOther       PostType = "other"        // 기타
 
 	// QnA
 	TypeQuestion PostType = "question" // 질문
@@ -81,7 +82,7 @@ type CommunityPost struct {
 	CommentCount int `gorm:"default:0" json:"comment_count"` // 댓글 수
 
 	// 이미지
-	ImageURLs []string `gorm:"type:text[]" json:"image_urls,omitempty"` // 이미지 URL 배열
+	ImageURLs pq.StringArray `gorm:"type:text[]" json:"image_urls,omitempty"` // 이미지 URL 배열
 
 	// 관계
 	Comments []CommunityComment `gorm:"foreignKey:PostID" json:"comments,omitempty"` // 댓글 목록

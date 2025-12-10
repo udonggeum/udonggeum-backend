@@ -34,8 +34,14 @@ type LoginRequest struct {
 }
 
 type UpdateProfileRequest struct {
-	Name  string `json:"name"`
-	Phone string `json:"phone"`
+	Name     string `json:"name"`
+	Phone    string `json:"phone"`
+	Nickname string `json:"nickname"`
+	Address  string `json:"address"`
+}
+
+type CheckNicknameRequest struct {
+	Nickname string `json:"nickname" binding:"required,min=2,max=20"`
 }
 
 type ForgotPasswordRequest struct {
@@ -101,11 +107,12 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "User registered successfully",
 		"user": gin.H{
-			"id":    user.ID,
-			"email": user.Email,
-			"name":  user.Name,
-			"phone": user.Phone,
-			"role":  user.Role,
+			"id":       user.ID,
+			"email":    user.Email,
+			"name":     user.Name,
+			"nickname": user.Nickname,
+			"phone":    user.Phone,
+			"role":     user.Role,
 		},
 		"tokens": tokens,
 	})
@@ -160,11 +167,12 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Login successful",
 		"user": gin.H{
-			"id":    user.ID,
-			"email": user.Email,
-			"name":  user.Name,
-			"phone": user.Phone,
-			"role":  user.Role,
+			"id":       user.ID,
+			"email":    user.Email,
+			"name":     user.Name,
+			"nickname": user.Nickname,
+			"phone":    user.Phone,
+			"role":     user.Role,
 		},
 		"tokens": tokens,
 	})
@@ -210,11 +218,12 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
-			"id":    user.ID,
-			"email": user.Email,
-			"name":  user.Name,
-			"phone": user.Phone,
-			"role":  user.Role,
+			"id":       user.ID,
+			"email":    user.Email,
+			"name":     user.Name,
+			"nickname": user.Nickname,
+			"phone":    user.Phone,
+			"role":     user.Role,
 		},
 	})
 }
@@ -247,11 +256,12 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 	}
 
 	log.Debug("Processing profile update", map[string]interface{}{
-		"user_id": userID,
-		"name":    req.Name,
+		"user_id":  userID,
+		"name":     req.Name,
+		"nickname": req.Nickname,
 	})
 
-	user, err := ctrl.authService.UpdateProfile(userID, req.Name, req.Phone)
+	user, err := ctrl.authService.UpdateProfile(userID, req.Name, req.Phone, req.Nickname, req.Address)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotFound) {
 			log.Warn("User not found for profile update", map[string]interface{}{
@@ -259,6 +269,16 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 			})
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "User not found",
+			})
+			return
+		}
+		if errors.Is(err, service.ErrNicknameAlreadyExists) {
+			log.Warn("Nickname already exists", map[string]interface{}{
+				"user_id":  userID,
+				"nickname": req.Nickname,
+			})
+			c.JSON(http.StatusConflict, gin.H{
+				"error": "Nickname already exists",
 			})
 			return
 		}
@@ -278,11 +298,12 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Profile updated successfully",
 		"user": gin.H{
-			"id":    user.ID,
-			"email": user.Email,
-			"name":  user.Name,
-			"phone": user.Phone,
-			"role":  user.Role,
+			"id":       user.ID,
+			"email":    user.Email,
+			"name":     user.Name,
+			"nickname": user.Nickname,
+			"phone":    user.Phone,
+			"role":     user.Role,
 		},
 	})
 }
@@ -456,5 +477,47 @@ func (ctrl *AuthController) RefreshToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Token refreshed successfully",
 		"tokens":  tokens,
+	})
+}
+
+// CheckNickname checks if a nickname is available
+// POST /api/v1/auth/check-nickname
+func (ctrl *AuthController) CheckNickname(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	var req CheckNicknameRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid check nickname request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	log.Debug("Checking nickname availability", map[string]interface{}{
+		"nickname": req.Nickname,
+	})
+
+	isAvailable, err := ctrl.authService.CheckNickname(req.Nickname)
+	if err != nil {
+		log.Error("Failed to check nickname availability", err, map[string]interface{}{
+			"nickname": req.Nickname,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to check nickname availability",
+		})
+		return
+	}
+
+	log.Info("Nickname availability checked", map[string]interface{}{
+		"nickname":    req.Nickname,
+		"is_available": isAvailable,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"is_available": isAvailable,
 	})
 }

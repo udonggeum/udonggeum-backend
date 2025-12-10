@@ -1,10 +1,39 @@
 package model
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
 )
+
+// StringArray는 PostgreSQL의 TEXT[] 또는 JSON 배열을 처리하기 위한 커스텀 타입
+type StringArray []string
+
+// Value는 database/sql/driver.Valuer 인터페이스 구현
+func (s StringArray) Value() (driver.Value, error) {
+	if s == nil {
+		return nil, nil
+	}
+	return json.Marshal(s)
+}
+
+// Scan은 database/sql.Scanner 인터페이스 구현
+func (s *StringArray) Scan(value interface{}) error {
+	if value == nil {
+		*s = nil
+		return nil
+	}
+
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New("failed to scan StringArray")
+	}
+
+	return json.Unmarshal(bytes, s)
+}
 
 type Store struct {
 	ID          uint           `gorm:"primarykey" json:"id"`          // 고유 매장 ID
@@ -22,10 +51,13 @@ type Store struct {
 	OpenTime    string         `gorm:"type:varchar(10)" json:"open_time"`    // 오픈 시간 (예: "09:00")
 	CloseTime   string         `gorm:"type:varchar(10)" json:"close_time"`   // 마감 시간 (예: "20:00")
 
-	// 매입 가능 여부 필드
-	BuyingGold     bool `gorm:"default:false" json:"buying_gold"`     // 금 매입 가능 여부
-	BuyingPlatinum bool `gorm:"default:false" json:"buying_platinum"` // 백금 매입 가능 여부
-	BuyingSilver   bool `gorm:"default:false" json:"buying_silver"`   // 은 매입 가능 여부
+	// 매장 태그 (JSON 배열로 저장)
+	Tags StringArray `gorm:"type:jsonb" json:"tags,omitempty"` // 매장 태그 (예: ["금 매입", "친절한 상담"])
+
+	// [Deprecated] 매입 가능 여부 필드 - tags로 이관 예정
+	BuyingGold     bool `gorm:"default:false" json:"buying_gold,omitempty"`     // 금 매입 가능 여부
+	BuyingPlatinum bool `gorm:"default:false" json:"buying_platinum,omitempty"` // 백금 매입 가능 여부
+	BuyingSilver   bool `gorm:"default:false" json:"buying_silver,omitempty"`   // 은 매입 가능 여부
 
 	CreatedAt time.Time      `json:"created_at"` // 생성 시각
 	UpdatedAt time.Time      `json:"updated_at"` // 수정 시각

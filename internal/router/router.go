@@ -13,6 +13,7 @@ type Router struct {
 	goldPriceController *controller.GoldPriceController
 	communityController *controller.CommunityController
 	reviewController    *controller.ReviewController
+	uploadController    *controller.UploadController
 	authMiddleware      *middleware.AuthMiddleware
 	config              *config.Config
 }
@@ -23,6 +24,7 @@ func NewRouter(
 	goldPriceController *controller.GoldPriceController,
 	communityController *controller.CommunityController,
 	reviewController *controller.ReviewController,
+	uploadController *controller.UploadController,
 	authMiddleware *middleware.AuthMiddleware,
 	cfg *config.Config,
 ) *Router {
@@ -32,6 +34,7 @@ func NewRouter(
 		goldPriceController: goldPriceController,
 		communityController: communityController,
 		reviewController:    reviewController,
+		uploadController:    uploadController,
 		authMiddleware:      authMiddleware,
 		config:              cfg,
 	}
@@ -63,6 +66,7 @@ func (r *Router) Setup() *gin.Engine {
 			auth.POST("/refresh", r.authController.RefreshToken)
 			auth.POST("/forgot-password", r.authController.ForgotPassword)
 			auth.POST("/reset-password", r.authController.ResetPassword)
+			auth.POST("/check-nickname", r.authController.CheckNickname)
 			auth.GET("/me", r.authMiddleware.Authenticate(), r.authController.GetMe)
 			auth.PUT("/me", r.authMiddleware.Authenticate(), r.authController.UpdateMe)
 		}
@@ -150,6 +154,15 @@ func (r *Router) Setup() *gin.Engine {
 				r.authMiddleware.Authenticate(),
 				r.authMiddleware.RequireRole("admin"),
 				r.goldPriceController.UpdateFromExternalAPI,
+			)
+		}
+
+		// Upload routes
+		upload := v1.Group("/upload")
+		{
+			upload.POST("/presigned-url",
+				r.authMiddleware.Authenticate(),
+				r.uploadController.GeneratePresignedURL,
 			)
 		}
 
