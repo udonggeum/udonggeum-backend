@@ -110,7 +110,7 @@ func (r *storeRepository) FindAll(filter StoreFilter) ([]model.Store, error) {
 		"search":   filter.Search,
 	})
 
-	query := r.db.Model(&model.Store{})
+	query := r.db.Model(&model.Store{}).Preload("Tags")
 	if filter.IncludeProducts {
 		query = query.Preload("Products", func(db *gorm.DB) *gorm.DB {
 			return db.Preload("Options")
@@ -156,7 +156,7 @@ func (r *storeRepository) FindByID(id uint, includeProducts bool) (*model.Store,
 		"store_id": id,
 	})
 
-	query := r.db.Model(&model.Store{})
+	query := r.db.Model(&model.Store{}).Preload("Tags")
 	if includeProducts {
 		query = query.Preload("Products", func(db *gorm.DB) *gorm.DB {
 			return db.Preload("Options")
@@ -194,7 +194,7 @@ func (r *storeRepository) FindByUserID(userID uint) ([]model.Store, error) {
 	})
 
 	var stores []model.Store
-	if err := r.db.Where("user_id = ?", userID).
+	if err := r.db.Preload("Tags").Where("user_id = ?", userID).
 		Order("created_at DESC").
 		Find(&stores).Error; err != nil {
 		logger.Error("Failed to find stores by user ID in database", err, map[string]interface{}{

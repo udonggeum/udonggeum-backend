@@ -55,7 +55,7 @@ type StoreMutation struct {
 	Description string
 	OpenTime    string
 	CloseTime   string
-	Tags        model.StringArray
+	TagIDs      []uint // 태그 ID 배열
 }
 
 func NewStoreService(storeRepo repository.StoreRepository, userRepo repository.UserRepository) StoreService {
@@ -211,9 +211,17 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 	existing.PhoneNumber = input.PhoneNumber
 	existing.ImageURL = input.ImageURL
 	existing.Description = input.Description
-	existing.Tags = input.Tags
 	existing.OpenTime = input.OpenTime
 	existing.CloseTime = input.CloseTime
+
+	// 태그 업데이트 (Many-to-Many 관계)
+	if input.TagIDs != nil {
+		var tags []model.Tag
+		for _, tagID := range input.TagIDs {
+			tags = append(tags, model.Tag{ID: tagID})
+		}
+		existing.Tags = tags
+	}
 
 	if err := s.storeRepo.Update(existing); err != nil {
 		logger.Error("Failed to update store", err, map[string]interface{}{

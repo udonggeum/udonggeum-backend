@@ -114,6 +114,7 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 			"name":     user.Name,
 			"nickname": user.Nickname,
 			"phone":    user.Phone,
+			"address":  user.Address,
 			"role":     user.Role,
 		},
 		"tokens": tokens,
@@ -174,6 +175,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 			"name":     user.Name,
 			"nickname": user.Nickname,
 			"phone":    user.Phone,
+			"address":  user.Address,
 			"role":     user.Role,
 		},
 		"tokens": tokens,
@@ -220,14 +222,15 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
-			"id":            user.ID,
-			"email":         user.Email,
-			"name":          user.Name,
-			"nickname":      user.Nickname,
-			"phone":         user.Phone,
-			"profile_image": user.ProfileImage,
-			"role":          user.Role,
-		},
+			"id":       user.ID,
+			"email":    user.Email,
+			"name":     user.Name,
+			"nickname": user.Nickname,
+			"phone":    user.Phone,
+			"address":  user.Address,
+ 			"profile_image": user.ProfileImage,
+			"role":     user.Role,
+    },
 	})
 }
 
@@ -302,13 +305,14 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Profile updated successfully",
 		"user": gin.H{
-			"id":            user.ID,
-			"email":         user.Email,
-			"name":          user.Name,
-			"nickname":      user.Nickname,
-			"phone":         user.Phone,
+			"id":       user.ID,
+			"email":    user.Email,
+			"name":     user.Name,
+			"nickname": user.Nickname,
+			"phone":    user.Phone,
+			"address":  user.Address,
 			"profile_image": user.ProfileImage,
-			"role":          user.Role,
+			"role":     user.Role,
 		},
 	})
 }

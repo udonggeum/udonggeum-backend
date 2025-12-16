@@ -24,6 +24,8 @@ func Migrate() error {
 		&model.CommentLike{},
 		&model.StoreReview{},
 		&model.ReviewLike{},
+		&model.Tag{},
+		&model.StoreTag{},
 	}
 
 	if err := DB.AutoMigrate(models...); err != nil {
@@ -212,6 +214,12 @@ func seedInitialData() error {
 		return err
 	}
 
+	// 태그 데이터 생성
+	if err := seedTags(); err != nil {
+		logger.Error("Failed to seed tags", err)
+		return err
+	}
+
 	logger.Info("Database seeded successfully", map[string]interface{}{
 		"stores_count": totalStores,
 	})
@@ -292,6 +300,136 @@ func seedGoldPrices() error {
 	logger.Info("Gold prices seeded successfully", map[string]interface{}{
 		"total_records": totalInserted,
 		"days":          30,
+	})
+
+	return nil
+}
+
+// seedTags 태그 데이터 생성
+func seedTags() error {
+	var count int64
+	if err := DB.Model(&model.Tag{}).Count(&count).Error; err != nil {
+		return err
+	}
+
+	if count > 0 {
+		logger.Info("Tags already seeded, skipping...", map[string]interface{}{
+			"existing_count": count,
+		})
+		return nil
+	}
+
+	logger.Info("Seeding tag data...")
+
+	tags := []model.Tag{
+		// 서비스 카테고리
+		{Name: "24K 취급", Category: "서비스"},
+		{Name: "18K 취급", Category: "서비스"},
+		{Name: "14K 취급", Category: "서비스"},
+		{Name: "금 매입", Category: "서비스"},
+		{Name: "금 판매", Category: "서비스"},
+		{Name: "수리가능", Category: "서비스"},
+		{Name: "리폼", Category: "서비스"},
+		{Name: "주얼리 제작", Category: "서비스"},
+
+		// 상품 카테고리
+		{Name: "다이아몬드", Category: "상품"},
+		{Name: "백금", Category: "상품"},
+		{Name: "은", Category: "상품"},
+		{Name: "반지", Category: "상품"},
+		{Name: "목걸이", Category: "상품"},
+		{Name: "팔찌", Category: "상품"},
+
+		// 특징 카테고리
+		{Name: "친절한 상담", Category: "특징"},
+		{Name: "빠른 매입", Category: "특징"},
+		{Name: "현금 즉시 지급", Category: "특징"},
+		{Name: "주차 가능", Category: "특징"},
+		{Name: "오픈 30년 이상", Category: "특징"},
+	}
+
+	totalInserted := 0
+	for _, tag := range tags {
+		if err := DB.Create(&tag).Error; err != nil {
+			logger.Error("Failed to create tag", err, map[string]interface{}{
+				"tag": tag.Name,
+			})
+			return err
+		}
+		totalInserted++
+	}
+
+	// 매장에 태그 연결 (샘플 데이터)
+	if err := seedStoreTags(); err != nil {
+		logger.Error("Failed to seed store tags", err)
+		return err
+	}
+
+	logger.Info("Tags seeded successfully", map[string]interface{}{
+		"total_tags": totalInserted,
+	})
+
+	return nil
+}
+
+// seedStoreTags 매장-태그 연결 데이터 생성
+func seedStoreTags() error {
+	logger.Info("Seeding store tags...")
+
+	// 모든 매장 조회
+	var stores []model.Store
+	if err := DB.Find(&stores).Error; err != nil {
+		return err
+	}
+
+	// 모든 태그 조회
+	var tags []model.Tag
+	if err := DB.Find(&tags).Error; err != nil {
+		return err
+	}
+
+	if len(stores) == 0 || len(tags) == 0 {
+		logger.Info("No stores or tags found, skipping store tag seeding")
+		return nil
+	}
+
+	// 각 매장에 랜덤으로 3-6개 태그 연결
+	for _, store := range stores {
+		// 랜덤 태그 개수 (3-6개)
+		numTags := rand.Intn(4) + 3
+
+		// 이미 할당된 태그 추적
+		assignedTags := make(map[uint]bool)
+
+		for i := 0; i < numTags && len(assignedTags) < len(tags); i++ {
+			// 랜덤 태그 선택
+			randomTag := tags[rand.Intn(len(tags))]
+
+			// 중복 체크
+			if assignedTags[randomTag.ID] {
+				continue
+			}
+
+			// 매장-태그 연결
+			storeTag := model.StoreTag{
+				StoreID: store.ID,
+				TagID:   randomTag.ID,
+			}
+
+			if err := DB.Create(&storeTag).Error; err != nil {
+				logger.Error("Failed to create store tag", err, map[string]interface{}{
+					"store_id": store.ID,
+					"tag_id":   randomTag.ID,
+				})
+				return err
+			}
+
+			assignedTags[randomTag.ID] = true
+		}
+	}
+
+	logger.Info("Store tags seeded successfully", map[string]interface{}{
+		"stores_count": len(stores),
 	})
 
 	return nil
