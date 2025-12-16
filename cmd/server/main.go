@@ -95,6 +95,7 @@ func main() {
 
 	communityService := service.NewCommunityService(communityRepo, userRepo)
 	reviewService := service.NewReviewService(reviewRepo, storeRepo)
+	tagService := service.NewTagService(dbConn)
 
 	// Initialize S3 storage
 	s3Storage := storage.NewS3Storage(
@@ -111,6 +112,7 @@ func main() {
 	communityController := controller.NewCommunityController(communityService)
 	reviewController := controller.NewReviewController(reviewService)
 	uploadController := controller.NewUploadController(s3Storage)
+	tagController := controller.NewTagController(tagService)
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
@@ -121,6 +123,7 @@ func main() {
 		communityController,
 		reviewController,
 		uploadController,
+		tagController,
 		authMiddleware,
 		cfg,
 	)

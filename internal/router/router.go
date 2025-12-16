@@ -14,6 +14,7 @@ type Router struct {
 	communityController *controller.CommunityController
 	reviewController    *controller.ReviewController
 	uploadController    *controller.UploadController
+	tagController       *controller.TagController
 	authMiddleware      *middleware.AuthMiddleware
 	config              *config.Config
 }
@@ -25,6 +26,7 @@ func NewRouter(
 	communityController *controller.CommunityController,
 	reviewController *controller.ReviewController,
 	uploadController *controller.UploadController,
+	tagController *controller.TagController,
 	authMiddleware *middleware.AuthMiddleware,
 	cfg *config.Config,
 ) *Router {
@@ -35,6 +37,7 @@ func NewRouter(
 		communityController: communityController,
 		reviewController:    reviewController,
 		uploadController:    uploadController,
+		tagController:       tagController,
 		authMiddleware:      authMiddleware,
 		config:              cfg,
 	}
@@ -168,6 +171,12 @@ func (r *Router) Setup() *gin.Engine {
 				r.authMiddleware.Authenticate(),
 				r.uploadController.GeneratePresignedURL,
 			)
+		}
+
+		// Tags routes
+		tags := v1.Group("/tags")
+		{
+			tags.GET("", r.tagController.ListTags) // 태그 목록 조회 (카테고리 필터 가능)
 		}
 
 		// Community (금광산) routes
