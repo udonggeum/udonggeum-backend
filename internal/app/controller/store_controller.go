@@ -32,7 +32,7 @@ type StoreRequest struct {
 	Description string   `json:"description"`
 	OpenTime    string   `json:"open_time"`
 	CloseTime   string   `json:"close_time"`
-	Tags        []string `json:"tags"` // 매장 태그 배열
+	TagIDs      []uint   `json:"tag_ids"` // 매장 태그 ID 배열
 }
 
 func (ctrl *StoreController) ListStores(c *gin.Context) {
@@ -144,6 +144,12 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		phoneNumber = req.Phone
 	}
 
+	// 태그 ID로부터 Tag 객체 생성
+	var tags []model.Tag
+	for _, tagID := range req.TagIDs {
+		tags = append(tags, model.Tag{ID: tagID})
+	}
+
 	store := &model.Store{
 		UserID:      userID,
 		Name:        req.Name,
@@ -157,7 +163,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		Description: req.Description,
 		OpenTime:    req.OpenTime,
 		CloseTime:   req.CloseTime,
-		Tags:        model.StringArray(req.Tags),
+		Tags:        tags,
 	}
 
 	created, err := ctrl.storeService.CreateStore(store)
@@ -233,7 +239,7 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 		Description: req.Description,
 		OpenTime:    req.OpenTime,
 		CloseTime:   req.CloseTime,
-		Tags:        model.StringArray(req.Tags),
+		TagIDs:      req.TagIDs,
 	})
 	if err != nil {
 		switch err {

@@ -51,8 +51,8 @@ type Store struct {
 	OpenTime    string         `gorm:"type:varchar(10)" json:"open_time"`    // 오픈 시간 (예: "09:00")
 	CloseTime   string         `gorm:"type:varchar(10)" json:"close_time"`   // 마감 시간 (예: "20:00")
 
-	// 매장 태그 (JSON 배열로 저장)
-	Tags StringArray `gorm:"type:jsonb" json:"tags,omitempty"` // 매장 태그 (예: ["금 매입", "친절한 상담"])
+	// 매장 태그 (Many-to-Many 관계)
+	Tags []Tag `gorm:"many2many:store_tags;" json:"tags,omitempty"`
 
 	// [Deprecated] 매입 가능 여부 필드 - tags로 이관 예정
 	BuyingGold     bool `gorm:"default:false" json:"buying_gold,omitempty"`     // 금 매입 가능 여부

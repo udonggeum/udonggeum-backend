@@ -112,6 +112,7 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 			"name":     user.Name,
 			"nickname": user.Nickname,
 			"phone":    user.Phone,
+			"address":  user.Address,
 			"role":     user.Role,
 		},
 		"tokens": tokens,
@@ -172,6 +173,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 			"name":     user.Name,
 			"nickname": user.Nickname,
 			"phone":    user.Phone,
+			"address":  user.Address,
 			"role":     user.Role,
 		},
 		"tokens": tokens,
@@ -223,6 +225,7 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 			"name":     user.Name,
 			"nickname": user.Nickname,
 			"phone":    user.Phone,
+			"address":  user.Address,
 			"role":     user.Role,
 		},
 	})
@@ -303,6 +306,7 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 			"name":     user.Name,
 			"nickname": user.Nickname,
 			"phone":    user.Phone,
+			"address":  user.Address,
 			"role":     user.Role,
 		},
 	})
