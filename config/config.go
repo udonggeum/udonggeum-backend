@@ -18,6 +18,7 @@ type Config struct {
 	Payment   PaymentConfig
 	S3        S3Config
 	GoldPrice GoldPriceConfig
+	Kakao     KakaoConfig
 }
 
 type ServerConfig struct {
@@ -78,6 +79,12 @@ type GoldPriceConfig struct {
 	APIKey string
 }
 
+type KakaoConfig struct {
+	ClientID     string
+	ClientSecret string
+	RedirectURI  string
+}
+
 func Load() (*Config, error) {
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
@@ -132,6 +139,11 @@ func Load() (*Config, error) {
 		GoldPrice: GoldPriceConfig{
 			APIURL: getEnv("GOLD_PRICE_API_URL", ""),
 			APIKey: getEnv("GOLD_PRICE_API_KEY", ""),
+		},
+		Kakao: KakaoConfig{
+			ClientID:     getEnv("KAKAO_CLIENT_ID", ""),
+			ClientSecret: getEnv("KAKAO_CLIENT_SECRET", ""),
+			RedirectURI:  getEnv("KAKAO_REDIRECT_URI", "http://localhost:8080/api/v1/auth/kakao/callback"),
 		},
 	}
 

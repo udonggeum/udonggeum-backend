@@ -90,3 +90,22 @@ func IsTokenBlacklisted(ctx context.Context, token string) (bool, error) {
 	// Token is blacklisted
 	return val == "revoked", nil
 }
+
+// StoreKakaoToken stores Kakao access token in Redis
+func StoreKakaoToken(ctx context.Context, key string, token string, expiry time.Duration) error {
+	logger.Debug("Storing Kakao access token in Redis", map[string]interface{}{
+		"key":    key,
+		"expiry": expiry.String(),
+	})
+
+	err := client.Set(ctx, key, token, expiry).Err()
+	if err != nil {
+		logger.Error("Failed to store Kakao access token", err, map[string]interface{}{
+			"key": key,
+		})
+		return err
+	}
+
+	logger.Debug("Kakao access token stored successfully", nil)
+	return nil
+}

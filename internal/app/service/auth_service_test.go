@@ -21,6 +21,9 @@ func setupAuthServiceTest(t *testing.T) (AuthService, *repository.UserRepository
 		"test-jwt-secret",
 		15*time.Minute,
 		7*24*time.Hour,
+		"test-kakao-client-id",
+		"test-kakao-client-secret",
+		"http://localhost:8080/api/v1/auth/kakao/callback",
 	)
 
 	return authService, &userRepo
