@@ -83,6 +83,9 @@ func main() {
 		cfg.JWT.Secret,
 		cfg.JWT.AccessTokenExpiry,
 		cfg.JWT.RefreshTokenExpiry,
+		cfg.Kakao.ClientID,
+		cfg.Kakao.ClientSecret,
+		cfg.Kakao.RedirectURI,
 	)
 	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
 	storeService := service.NewStoreService(storeRepo, userRepo)

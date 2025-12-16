@@ -31,6 +31,9 @@ func setupAuthControllerTest(t *testing.T) (*gin.Engine, *AuthController, servic
 		"test-secret",
 		15*time.Minute,
 		7*24*time.Hour,
+		"test-kakao-client-id",
+		"test-kakao-client-secret",
+		"http://localhost:8080/api/v1/auth/kakao/callback",
 	)
 	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
 

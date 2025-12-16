@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
@@ -34,10 +35,11 @@ type LoginRequest struct {
 }
 
 type UpdateProfileRequest struct {
-	Name     string `json:"name"`
-	Phone    string `json:"phone"`
-	Nickname string `json:"nickname"`
-	Address  string `json:"address"`
+	Name         string `json:"name"`
+	Phone        string `json:"phone"`
+	Nickname     string `json:"nickname"`
+	Address      string `json:"address"`
+	ProfileImage string `json:"profile_image"` // S3 URL from upload API
 }
 
 type CheckNicknameRequest struct {
@@ -218,12 +220,13 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
-			"id":       user.ID,
-			"email":    user.Email,
-			"name":     user.Name,
-			"nickname": user.Nickname,
-			"phone":    user.Phone,
-			"role":     user.Role,
+			"id":            user.ID,
+			"email":         user.Email,
+			"name":          user.Name,
+			"nickname":      user.Nickname,
+			"phone":         user.Phone,
+			"profile_image": user.ProfileImage,
+			"role":          user.Role,
 		},
 	})
 }
@@ -256,12 +259,13 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 	}
 
 	log.Debug("Processing profile update", map[string]interface{}{
-		"user_id":  userID,
-		"name":     req.Name,
-		"nickname": req.Nickname,
+		"user_id":       userID,
+		"name":          req.Name,
+		"nickname":      req.Nickname,
+		"profile_image": req.ProfileImage,
 	})
 
-	user, err := ctrl.authService.UpdateProfile(userID, req.Name, req.Phone, req.Nickname, req.Address)
+	user, err := ctrl.authService.UpdateProfile(userID, req.Name, req.Phone, req.Nickname, req.Address, req.ProfileImage)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotFound) {
 			log.Warn("User not found for profile update", map[string]interface{}{
@@ -298,12 +302,13 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Profile updated successfully",
 		"user": gin.H{
-			"id":       user.ID,
-			"email":    user.Email,
-			"name":     user.Name,
-			"nickname": user.Nickname,
-			"phone":    user.Phone,
-			"role":     user.Role,
+			"id":            user.ID,
+			"email":         user.Email,
+			"name":          user.Name,
+			"nickname":      user.Nickname,
+			"phone":         user.Phone,
+			"profile_image": user.ProfileImage,
+			"role":          user.Role,
 		},
 	})
 }
@@ -519,5 +524,89 @@ func (ctrl *AuthController) CheckNickname(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"is_available": isAvailable,
+	})
+}
+
+// GetKakaoLoginURL returns the Kakao OAuth login URL
+// GET /api/v1/auth/kakao/login
+func (ctrl *AuthController) GetKakaoLoginURL(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	log.Debug("Generating Kakao login URL")
+
+	loginURL := ctrl.authService.GetKakaoLoginURL()
+
+	log.Info("Kakao login URL generated", map[string]interface{}{
+		"url": loginURL,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"login_url": loginURL,
+	})
+}
+
+// KakaoCallback handles Kakao OAuth callback
+// GET /api/v1/auth/kakao/callback
+func (ctrl *AuthController) KakaoCallback(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	code := c.Query("code")
+	if code == "" {
+		log.Warn("Kakao callback without authorization code", nil)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Authorization code is required",
+		})
+		return
+	}
+
+	log.Debug("Processing Kakao callback", map[string]interface{}{
+		"code": code,
+	})
+
+	user, tokens, err := ctrl.authService.KakaoLogin(code)
+	if err != nil {
+		log.Error("Kakao login failed", err, map[string]interface{}{
+			"code": code,
+		})
+
+		// Provide more specific error messages
+		errorMsg := "Failed to login with Kakao"
+		statusCode := http.StatusInternalServerError
+
+		errStr := err.Error()
+		if errors.Is(err, service.ErrUserNotFound) ||
+		   strings.Contains(errStr, "email consent required") ||
+		   strings.Contains(errStr, "missing email") {
+			errorMsg = "Email consent is required for Kakao login"
+			statusCode = http.StatusBadRequest
+		} else if strings.Contains(errStr, "status 401") ||
+		          strings.Contains(errStr, "status 400") {
+			errorMsg = "Invalid Kakao authorization - please try again"
+			statusCode = http.StatusUnauthorized
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error": errorMsg,
+		})
+		return
+	}
+
+	log.Info("Kakao login successful", map[string]interface{}{
+		"user_id": user.ID,
+		"email":   user.Email,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Kakao login successful",
+		"user": gin.H{
+			"id":            user.ID,
+			"email":         user.Email,
+			"name":          user.Name,
+			"nickname":      user.Nickname,
+			"phone":         user.Phone,
+			"profile_image": user.ProfileImage,
+			"role":          user.Role,
+		},
+		"tokens": tokens,
 	})
 }

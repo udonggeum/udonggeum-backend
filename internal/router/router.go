@@ -69,6 +69,10 @@ func (r *Router) Setup() *gin.Engine {
 			auth.POST("/check-nickname", r.authController.CheckNickname)
 			auth.GET("/me", r.authMiddleware.Authenticate(), r.authController.GetMe)
 			auth.PUT("/me", r.authMiddleware.Authenticate(), r.authController.UpdateMe)
+
+			// Kakao OAuth
+			auth.GET("/kakao/login", r.authController.GetKakaoLoginURL)
+			auth.GET("/kakao/callback", r.authController.KakaoCallback)
 		}
 
 		stores := v1.Group("/stores")

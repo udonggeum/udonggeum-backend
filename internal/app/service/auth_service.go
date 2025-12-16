@@ -2,8 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
@@ -28,10 +33,12 @@ type AuthService interface {
 	Register(email, password, name, phone string) (*model.User, *util.TokenPair, error)
 	Login(email, password string) (*model.User, *util.TokenPair, error)
 	GetUserByID(id uint) (*model.User, error)
-	UpdateProfile(userID uint, name, phone, nickname, address string) (*model.User, error)
+	UpdateProfile(userID uint, name, phone, nickname, address, profileImage string) (*model.User, error)
 	CheckNickname(nickname string) (bool, error)
 	RefreshToken(refreshToken string) (*util.TokenPair, error)
 	RevokeToken(refreshToken string) error
+	GetKakaoLoginURL() string
+	KakaoLogin(code string) (*model.User, *util.TokenPair, error)
 }
 
 type authService struct {
@@ -39,18 +46,25 @@ type authService struct {
 	jwtSecret         string
 	accessExpiry      time.Duration
 	refreshExpiry     time.Duration
+	kakaoClientID     string
+	kakaoClientSecret string
+	kakaoRedirectURI  string
 }
 
 func NewAuthService(
 	userRepo repository.UserRepository,
 	jwtSecret string,
 	accessExpiry, refreshExpiry time.Duration,
+	kakaoClientID, kakaoClientSecret, kakaoRedirectURI string,
 ) AuthService {
 	return &authService{
-		userRepo:      userRepo,
-		jwtSecret:     jwtSecret,
-		accessExpiry:  accessExpiry,
-		refreshExpiry: refreshExpiry,
+		userRepo:          userRepo,
+		jwtSecret:         jwtSecret,
+		accessExpiry:      accessExpiry,
+		refreshExpiry:     refreshExpiry,
+		kakaoClientID:     kakaoClientID,
+		kakaoClientSecret: kakaoClientSecret,
+		kakaoRedirectURI:  kakaoRedirectURI,
 	}
 }
 
@@ -218,7 +232,7 @@ func (s *authService) GetUserByID(id uint) (*model.User, error) {
 	return user, nil
 }
 
-func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address string) (*model.User, error) {
+func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address, profileImage string) (*model.User, error) {
 	logger.Info("Updating user profile", map[string]interface{}{
 		"user_id": userID,
 	})
@@ -277,6 +291,11 @@ func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address 
 	// Address can be empty (to clear it), so we don't check for empty string
 	if address != user.Address {
 		user.Address = address
+		updated = true
+	}
+	// ProfileImage can be empty (to clear it) or update to new URL
+	if profileImage != user.ProfileImage {
+		user.ProfileImage = profileImage
 		updated = true
 	}
 
@@ -478,4 +497,323 @@ func (s *authService) generateUniqueNickname() (string, error) {
 	}
 
 	return "", errors.New("failed to generate unique nickname after maximum retries")
+}
+
+// normalizePhoneNumber normalizes phone number from Kakao format to storage format
+// Input examples: "+82 10-1234-5678", "+82 1012345678", "+82-10-1234-5678"
+// Output: "01012345678" (digits only, +82 replaced with 0)
+func normalizePhoneNumber(kakaoPhone string) string {
+	if kakaoPhone == "" {
+		return ""
+	}
+
+	// Remove all spaces and hyphens
+	phone := strings.ReplaceAll(kakaoPhone, " ", "")
+	phone = strings.ReplaceAll(phone, "-", "")
+
+	// Replace +82 with 0
+	if strings.HasPrefix(phone, "+82") {
+		phone = "0" + phone[3:]
+	}
+
+	// Extract only digits
+	re := regexp.MustCompile(`\d+`)
+	phone = strings.Join(re.FindAllString(phone, -1), "")
+
+	// Validate Korean phone number format (10-11 digits starting with 0)
+	if len(phone) < 10 || len(phone) > 11 || !strings.HasPrefix(phone, "0") {
+		logger.Warn("Invalid phone number format after normalization", map[string]interface{}{
+			"original": kakaoPhone,
+			"normalized": phone,
+		})
+		return ""
+	}
+
+	return phone
+}
+
+// getProfileImageURL returns the best available profile image URL from Kakao
+func getProfileImageURL(kakaoUserInfo *kakaoUserInfo) string {
+	// Priority: kakao_account.profile.profile_image_url > properties.profile_image
+	if kakaoUserInfo.KakaoAccount.Profile.ProfileImageURL != "" &&
+	   !kakaoUserInfo.KakaoAccount.Profile.IsDefaultImage {
+		return kakaoUserInfo.KakaoAccount.Profile.ProfileImageURL
+	}
+
+	if kakaoUserInfo.Properties.ProfileImage != "" {
+		return kakaoUserInfo.Properties.ProfileImage
+	}
+
+	return ""
+}
+
+// GetKakaoLoginURL returns the Kakao OAuth login URL
+func (s *authService) GetKakaoLoginURL() string {
+	return fmt.Sprintf("https://kauth.kakao.com/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code",
+		s.kakaoClientID, s.kakaoRedirectURI)
+}
+
+// KakaoLogin handles Kakao OAuth login
+func (s *authService) KakaoLogin(code string) (*model.User, *util.TokenPair, error) {
+	logger.Info("Starting Kakao login", map[string]interface{}{
+		"code": code,
+	})
+
+	// 1. Get Kakao access token
+	kakaoToken, err := s.getKakaoToken(code)
+	if err != nil {
+		logger.Error("Failed to get Kakao access token", err, nil)
+		return nil, nil, fmt.Errorf("failed to get Kakao access token: %w", err)
+	}
+
+	// 2. Get user info from Kakao
+	kakaoUserInfo, err := s.getKakaoUserInfo(kakaoToken.AccessToken)
+	if err != nil {
+		logger.Error("Failed to get Kakao user info", err, nil)
+		return nil, nil, fmt.Errorf("failed to get Kakao user info: %w", err)
+	}
+
+	logger.Debug("Kakao user info retrieved", map[string]interface{}{
+		"email": kakaoUserInfo.KakaoAccount.Email,
+	})
+
+	// 3. Check if user already exists
+	user, err := s.userRepo.FindByEmail(kakaoUserInfo.KakaoAccount.Email)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Error("Failed to check existing user", err, map[string]interface{}{
+			"email": kakaoUserInfo.KakaoAccount.Email,
+		})
+		return nil, nil, err
+	}
+
+	// 4. Create new user if not exists
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Info("Creating new user from Kakao login", map[string]interface{}{
+			"email": kakaoUserInfo.KakaoAccount.Email,
+		})
+
+		// Generate unique nickname
+		nickname, err := s.generateUniqueNickname()
+		if err != nil {
+			logger.Error("Failed to generate unique nickname", err, nil)
+			return nil, nil, err
+		}
+
+		// Normalize phone number
+		phone := normalizePhoneNumber(kakaoUserInfo.KakaoAccount.PhoneNumber)
+
+		// Get profile image URL
+		profileImage := getProfileImageURL(kakaoUserInfo)
+
+		user = &model.User{
+			Email:        kakaoUserInfo.KakaoAccount.Email,
+			PasswordHash: "", // Kakao login users don't have password
+			Name:         kakaoUserInfo.Properties.Nickname,
+			Nickname:     nickname,
+			Phone:        phone,
+			ProfileImage: profileImage,
+			Role:         model.RoleUser,
+		}
+
+		logger.Debug("Creating user with Kakao info", map[string]interface{}{
+			"email":         user.Email,
+			"name":          user.Name,
+			"phone":         user.Phone,
+			"profile_image": user.ProfileImage,
+		})
+
+		if err := s.userRepo.Create(user); err != nil {
+			logger.Error("Failed to create Kakao user", err, map[string]interface{}{
+				"email": kakaoUserInfo.KakaoAccount.Email,
+			})
+			return nil, nil, err
+		}
+
+		logger.Info("New user created from Kakao login", map[string]interface{}{
+			"user_id": user.ID,
+			"email":   user.Email,
+		})
+	} else {
+		logger.Info("Existing user found for Kakao login", map[string]interface{}{
+			"user_id": user.ID,
+			"email":   user.Email,
+		})
+	}
+
+	// 5. Store Kakao access token in Redis
+	ctx := context.Background()
+	kakaoRedisKey := fmt.Sprintf("kakao_access_token:%d", user.ID)
+	if err := redisClient.StoreKakaoToken(ctx, kakaoRedisKey, kakaoToken.AccessToken, 15*time.Minute); err != nil {
+		logger.Error("Failed to store Kakao access token in Redis", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
+		// Don't fail the login if Redis storage fails
+	}
+
+	// 6. Generate JWT tokens
+	tokens, err := util.GenerateTokenPair(
+		user.ID,
+		user.Email,
+		string(user.Role),
+		s.jwtSecret,
+		s.accessExpiry,
+		s.refreshExpiry,
+	)
+	if err != nil {
+		logger.Error("Failed to generate tokens for Kakao login", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
+		return nil, nil, err
+	}
+
+	logger.Info("Kakao login successful", map[string]interface{}{
+		"user_id": user.ID,
+		"email":   user.Email,
+	})
+
+	return user, tokens, nil
+}
+
+// kakaoTokenResponse represents Kakao token response
+type kakaoTokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+}
+
+// kakaoUserInfo represents Kakao user information
+type kakaoUserInfo struct {
+	ID           int64         `json:"id"`
+	ConnectedAt  string        `json:"connected_at"`
+	Properties   kakaoProperties `json:"properties"`
+	KakaoAccount kakaoAccount  `json:"kakao_account"`
+}
+
+type kakaoProperties struct {
+	Nickname       string `json:"nickname"`
+	ProfileImage   string `json:"profile_image"`
+	ThumbnailImage string `json:"thumbnail_image"`
+}
+
+type kakaoAccount struct {
+	Email                 string        `json:"email"`
+	ProfileNeedsAgreement bool          `json:"profile_needs_agreement"`
+	HasEmail              bool          `json:"has_email"`
+	PhoneNumber           string        `json:"phone_number"`
+	HasPhoneNumber        bool          `json:"has_phone_number"`
+	Profile               kakaoProfile  `json:"profile"`
+}
+
+type kakaoProfile struct {
+	Nickname         string `json:"nickname"`
+	ProfileImageURL  string `json:"profile_image_url"`
+	ThumbnailURL     string `json:"thumbnail_image_url"`
+	IsDefaultImage   bool   `json:"is_default_image"`
+}
+
+// getKakaoToken requests access token from Kakao
+func (s *authService) getKakaoToken(code string) (*kakaoTokenResponse, error) {
+	logger.Debug("Requesting Kakao token")
+
+	reqBody := fmt.Sprintf("grant_type=authorization_code&client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
+		s.kakaoClientID, s.kakaoClientSecret, s.kakaoRedirectURI, code)
+
+	resp, err := http.Post("https://kauth.kakao.com/oauth/token",
+		"application/x-www-form-urlencoded",
+		strings.NewReader(reqBody))
+	if err != nil {
+		logger.Error("Failed to make HTTP request to Kakao token endpoint", err, nil)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Error("Failed to read Kakao token response", err, nil)
+		return nil, err
+	}
+
+	// Check HTTP status code
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("Kakao token request failed", nil, map[string]interface{}{
+			"status_code":   resp.StatusCode,
+			"response_body": string(body),
+		})
+		return nil, fmt.Errorf("kakao token request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp kakaoTokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		logger.Error("Failed to unmarshal Kakao token response", err, map[string]interface{}{
+			"response_body": string(body),
+		})
+		return nil, err
+	}
+
+	// Validate access token exists
+	if tokenResp.AccessToken == "" {
+		logger.Error("Kakao token response missing access_token", nil, map[string]interface{}{
+			"response_body": string(body),
+		})
+		return nil, fmt.Errorf("kakao token response missing access_token")
+	}
+
+	logger.Debug("Kakao token obtained successfully")
+	return &tokenResp, nil
+}
+
+// getKakaoUserInfo gets user information from Kakao
+func (s *authService) getKakaoUserInfo(accessToken string) (*kakaoUserInfo, error) {
+	logger.Debug("Requesting Kakao user info")
+
+	req, err := http.NewRequest("GET", "https://kapi.kakao.com/v2/user/me", nil)
+	if err != nil {
+		logger.Error("Failed to create HTTP request for Kakao user info", err, nil)
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.Error("Failed to make HTTP request to Kakao user info endpoint", err, nil)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Error("Failed to read Kakao user info response", err, nil)
+		return nil, err
+	}
+
+	// Check HTTP status code
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("Kakao user info request failed", nil, map[string]interface{}{
+			"status_code":   resp.StatusCode,
+			"response_body": string(body),
+		})
+		return nil, fmt.Errorf("kakao user info request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var userInfo kakaoUserInfo
+	if err := json.Unmarshal(body, &userInfo); err != nil {
+		logger.Error("Failed to unmarshal Kakao user info response", err, map[string]interface{}{
+			"response_body": string(body),
+		})
+		return nil, err
+	}
+
+	// Validate email exists
+	if userInfo.KakaoAccount.Email == "" {
+		logger.Error("Kakao user info missing email", nil, map[string]interface{}{
+			"response_body": string(body),
+		})
+		return nil, fmt.Errorf("kakao user did not provide email - email consent required")
+	}
+
+	logger.Debug("Kakao user info obtained successfully", map[string]interface{}{
+		"email": userInfo.KakaoAccount.Email,
+	})
+	return &userInfo, nil
 }
