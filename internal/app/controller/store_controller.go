@@ -27,7 +27,6 @@ type StoreRequest struct {
 	Latitude    *float64 `json:"latitude"`
 	Longitude   *float64 `json:"longitude"`
 	PhoneNumber string   `json:"phone_number"`
-	Phone       string   `json:"phone"`       // 프론트엔드 호환성을 위한 별칭
 	ImageURL    string   `json:"image_url"`
 	Description string   `json:"description"`
 	OpenTime    string   `json:"open_time"`
@@ -192,12 +191,6 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		return
 	}
 
-	// Phone 필드 우선, 없으면 PhoneNumber 사용
-	phoneNumber := req.PhoneNumber
-	if req.Phone != "" {
-		phoneNumber = req.Phone
-	}
-
 	// 태그 ID로부터 Tag 객체 생성
 	var tags []model.Tag
 	for _, tagID := range req.TagIDs {
@@ -212,7 +205,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		Address:     req.Address,
 		Latitude:    req.Latitude,
 		Longitude:   req.Longitude,
-		PhoneNumber: phoneNumber,
+		PhoneNumber: req.PhoneNumber,
 		ImageURL:    req.ImageURL,
 		Description: req.Description,
 		OpenTime:    req.OpenTime,
