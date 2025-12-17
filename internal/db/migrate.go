@@ -24,6 +24,7 @@ func Migrate() error {
 		&model.CommentLike{},
 		&model.StoreReview{},
 		&model.ReviewLike{},
+		&model.StoreLike{},
 		&model.Tag{},
 		&model.StoreTag{},
 	}

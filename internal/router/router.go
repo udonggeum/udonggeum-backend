@@ -80,9 +80,9 @@ func (r *Router) Setup() *gin.Engine {
 
 		stores := v1.Group("/stores")
 		{
-			stores.GET("", r.storeController.ListStores)
+			stores.GET("", r.authMiddleware.OptionalAuthenticate(), r.storeController.ListStores)
 			stores.GET("/locations", r.storeController.ListLocations)
-			stores.GET("/:id", r.storeController.GetStoreByID)
+			stores.GET("/:id", r.authMiddleware.OptionalAuthenticate(), r.storeController.GetStoreByID)
 			stores.POST("",
 				r.authMiddleware.Authenticate(),
 				r.authMiddleware.RequireRole("admin"),
@@ -97,6 +97,12 @@ func (r *Router) Setup() *gin.Engine {
 				r.authMiddleware.Authenticate(),
 				r.authMiddleware.RequireRole("admin"),
 				r.storeController.DeleteStore,
+			)
+
+			// Store like
+			stores.POST("/:id/like",
+				r.authMiddleware.Authenticate(),
+				r.storeController.ToggleStoreLike,
 			)
 
 			// Store reviews
@@ -119,6 +125,10 @@ func (r *Router) Setup() *gin.Engine {
 			users.GET("/me/reviews",
 				r.authMiddleware.Authenticate(),
 				r.reviewController.GetUserReviews,
+			)
+			users.GET("/me/liked-stores",
+				r.authMiddleware.Authenticate(),
+				r.storeController.GetUserLikedStores,
 			)
 		}
 

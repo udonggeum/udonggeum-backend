@@ -28,6 +28,10 @@ type StoreRepository interface {
 	FindByID(id uint, includeProducts bool) (*model.Store, error)
 	FindByUserID(userID uint) ([]model.Store, error)
 	ListLocations() ([]StoreLocation, error)
+	ToggleLike(storeID, userID uint) (bool, error)
+	IsLiked(storeID, userID uint) (bool, error)
+	GetUserLikedStores(userID uint) ([]model.Store, error)
+	GetUserLikedStoreIDs(userID uint) ([]uint, error)
 }
 
 type storeRepository struct {
@@ -239,4 +243,136 @@ func (r *storeRepository) ListLocations() ([]StoreLocation, error) {
 func (r *storeRepository) populateStoreStats(stores *[]model.Store) error {
 	// Product 관련 기능 제거됨 - 홍보 사이트로 전환
 	return nil
+}
+
+// ToggleLike 매장 좋아요 토글
+func (r *storeRepository) ToggleLike(storeID, userID uint) (bool, error) {
+	logger.Debug("Toggling store like", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+	})
+
+	var like model.StoreLike
+	err := r.db.Where("store_id = ? AND user_id = ?", storeID, userID).First(&like).Error
+
+	if err == gorm.ErrRecordNotFound {
+		// 좋아요 추가
+		like = model.StoreLike{
+			StoreID: storeID,
+			UserID:  userID,
+		}
+		if err := r.db.Create(&like).Error; err != nil {
+			logger.Error("Failed to create store like", err, map[string]interface{}{
+				"store_id": storeID,
+				"user_id":  userID,
+			})
+			return false, err
+		}
+
+		logger.Debug("Store like added", map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  userID,
+		})
+		return true, nil
+	} else if err != nil {
+		logger.Error("Failed to check store like", err, map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  userID,
+		})
+		return false, err
+	}
+
+	// 좋아요 제거
+	if err := r.db.Delete(&like).Error; err != nil {
+		logger.Error("Failed to delete store like", err, map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  userID,
+		})
+		return false, err
+	}
+
+	logger.Debug("Store like removed", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+	})
+	return false, nil
+}
+
+// IsLiked 사용자가 매장에 좋아요를 눌렀는지 확인
+func (r *storeRepository) IsLiked(storeID, userID uint) (bool, error) {
+	logger.Debug("Checking if store is liked", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+	})
+
+	var count int64
+	err := r.db.Model(&model.StoreLike{}).
+		Where("store_id = ? AND user_id = ?", storeID, userID).
+		Count(&count).Error
+	if err != nil {
+		logger.Error("Failed to check if store is liked", err, map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  userID,
+		})
+		return false, err
+	}
+
+	logger.Debug("Store like status checked", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+		"is_liked": count > 0,
+	})
+	return count > 0, nil
+}
+
+// GetUserLikedStores retrieves all stores liked by the user
+func (r *storeRepository) GetUserLikedStores(userID uint) ([]model.Store, error) {
+	logger.Debug("Getting user liked stores from repository", map[string]interface{}{
+		"user_id": userID,
+	})
+
+	var stores []model.Store
+	err := r.db.
+		Joins("JOIN store_likes ON store_likes.store_id = stores.id").
+		Where("store_likes.user_id = ?", userID).
+		Preload("Tags").
+		Find(&stores).Error
+
+	if err != nil {
+		logger.Error("Failed to query user liked stores", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, err
+	}
+
+	logger.Debug("User liked stores queried", map[string]interface{}{
+		"user_id": userID,
+		"count":   len(stores),
+	})
+	return stores, nil
+}
+
+// GetUserLikedStoreIDs retrieves IDs of all stores liked by the user
+func (r *storeRepository) GetUserLikedStoreIDs(userID uint) ([]uint, error) {
+	logger.Debug("Getting user liked store IDs from repository", map[string]interface{}{
+		"user_id": userID,
+	})
+
+	var storeIDs []uint
+	err := r.db.Model(&model.StoreLike{}).
+		Where("user_id = ?", userID).
+		Pluck("store_id", &storeIDs).Error
+
+	if err != nil {
+		logger.Error("Failed to query user liked store IDs", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, err
+	}
+
+	logger.Debug("User liked store IDs queried", map[string]interface{}{
+		"user_id": userID,
+		"count":   len(storeIDs),
+	})
+	return storeIDs, nil
 }

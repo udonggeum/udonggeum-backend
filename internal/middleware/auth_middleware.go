@@ -26,7 +26,7 @@ func NewAuthMiddleware(jwtSecret string) *AuthMiddleware {
 	}
 }
 
-// Authenticate validates JWT token
+// Authenticate validates JWT token (required)
 func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log := GetLoggerFromContext(c)
@@ -76,6 +76,61 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 		c.Set("user_role", model.UserRole(claims.Role))
 
 		log.Debug("User authenticated successfully", map[string]interface{}{
+			"user_id": claims.UserID,
+			"email":   claims.Email,
+			"role":    claims.Role,
+		})
+
+		c.Next()
+	}
+}
+
+// OptionalAuthenticate validates JWT token if present (optional)
+// - If token is present and valid: sets user info in context
+// - If token is missing or invalid: continues without user info
+func (m *AuthMiddleware) OptionalAuthenticate() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		log := GetLoggerFromContext(c)
+
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			// No token provided - continue as guest
+			log.Debug("No authorization header - continuing as guest", map[string]interface{}{
+				"path": c.Request.URL.Path,
+			})
+			c.Next()
+			return
+		}
+
+		// Extract token from "Bearer <token>"
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			// Invalid format - continue as guest
+			log.Debug("Invalid authorization header format - continuing as guest", map[string]interface{}{
+				"path": c.Request.URL.Path,
+			})
+			c.Next()
+			return
+		}
+
+		token := parts[1]
+		claims, err := util.ValidateToken(token, m.jwtSecret)
+		if err != nil {
+			// Invalid or expired token - continue as guest
+			log.Debug("Token validation failed - continuing as guest", map[string]interface{}{
+				"path":  c.Request.URL.Path,
+				"error": err.Error(),
+			})
+			c.Next()
+			return
+		}
+
+		// Valid token - set user information in context
+		c.Set("user_id", claims.UserID)
+		c.Set("user_email", claims.Email)
+		c.Set("user_role", model.UserRole(claims.Role))
+
+		log.Debug("User authenticated successfully (optional)", map[string]interface{}{
 			"user_id": claims.UserID,
 			"email":   claims.Email,
 			"role":    claims.Role,

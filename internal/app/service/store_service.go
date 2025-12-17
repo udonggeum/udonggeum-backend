@@ -36,6 +36,10 @@ type StoreService interface {
 	CreateStore(store *model.Store) (*model.Store, error)
 	UpdateStore(userID uint, storeID uint, input StoreMutation) (*model.Store, error)
 	DeleteStore(userID uint, storeID uint) error
+	ToggleStoreLike(storeID, userID uint) (bool, error)
+	IsStoreLiked(storeID, userID uint) (bool, error)
+	GetUserLikedStores(userID uint) ([]model.Store, error)
+	GetUserLikedStoreIDs(userID uint) ([]uint, error)
 }
 
 type storeService struct {
@@ -320,4 +324,109 @@ func (s *storeService) ListLocations() ([]StoreLocationSummary, error) {
 		"count": len(summaries),
 	})
 	return summaries, nil
+}
+
+// ToggleStoreLike 매장 좋아요 토글
+func (s *storeService) ToggleStoreLike(storeID, userID uint) (bool, error) {
+	logger.Debug("Toggling store like", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+	})
+
+	// 매장 존재 확인
+	_, err := s.storeRepo.FindByID(storeID, false)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Warn("Store not found for like toggle", map[string]interface{}{
+				"store_id": storeID,
+			})
+			return false, ErrStoreNotFound
+		}
+		logger.Error("Failed to find store for like toggle", err, map[string]interface{}{
+			"store_id": storeID,
+		})
+		return false, err
+	}
+
+	isLiked, err := s.storeRepo.ToggleLike(storeID, userID)
+	if err != nil {
+		logger.Error("Failed to toggle store like", err, map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  userID,
+		})
+		return false, err
+	}
+
+	logger.Info("Store like toggled", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+		"is_liked": isLiked,
+	})
+	return isLiked, nil
+}
+
+// IsStoreLiked 사용자가 매장에 좋아요를 눌렀는지 확인
+func (s *storeService) IsStoreLiked(storeID, userID uint) (bool, error) {
+	logger.Debug("Checking if store is liked", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+	})
+
+	isLiked, err := s.storeRepo.IsLiked(storeID, userID)
+	if err != nil {
+		logger.Error("Failed to check if store is liked", err, map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  userID,
+		})
+		return false, err
+	}
+
+	logger.Debug("Store like status checked", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+		"is_liked": isLiked,
+	})
+	return isLiked, nil
+}
+
+// GetUserLikedStores retrieves all stores liked by the user
+func (s *storeService) GetUserLikedStores(userID uint) ([]model.Store, error) {
+	logger.Debug("Getting user liked stores", map[string]interface{}{
+		"user_id": userID,
+	})
+
+	stores, err := s.storeRepo.GetUserLikedStores(userID)
+	if err != nil {
+		logger.Error("Failed to get user liked stores", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, err
+	}
+
+	logger.Debug("User liked stores retrieved", map[string]interface{}{
+		"user_id": userID,
+		"count":   len(stores),
+	})
+	return stores, nil
+}
+
+// GetUserLikedStoreIDs retrieves IDs of all stores liked by the user
+func (s *storeService) GetUserLikedStoreIDs(userID uint) ([]uint, error) {
+	logger.Debug("Getting user liked store IDs", map[string]interface{}{
+		"user_id": userID,
+	})
+
+	storeIDs, err := s.storeRepo.GetUserLikedStoreIDs(userID)
+	if err != nil {
+		logger.Error("Failed to get user liked store IDs", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, err
+	}
+
+	logger.Debug("User liked store IDs retrieved", map[string]interface{}{
+		"user_id": userID,
+		"count":   len(storeIDs),
+	})
+	return storeIDs, nil
 }

@@ -67,3 +67,19 @@ type Store struct {
 func (Store) TableName() string {
 	return "stores"
 }
+
+// StoreLike 매장 좋아요 모델
+type StoreLike struct {
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	StoreID uint `gorm:"not null;index:idx_store_user_like,unique" json:"store_id"` // 매장 ID
+	UserID  uint `gorm:"not null;index:idx_store_user_like,unique" json:"user_id"`  // 사용자 ID
+
+	Store Store `gorm:"foreignKey:StoreID" json:"-"`
+	User  User  `gorm:"foreignKey:UserID" json:"-"`
+}
+
+func (StoreLike) TableName() string {
+	return "store_likes"
+}

@@ -57,14 +57,57 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 		return
 	}
 
+	// 인증된 사용자의 경우 좋아요 상태 포함
+	response := gin.H{
+		"stores": stores,
+		"count":  len(stores),
+	}
+
+	if userID, exists := middleware.GetUserID(c); exists {
+		likedStoreIDs, err := ctrl.storeService.GetUserLikedStoreIDs(userID)
+		if err == nil {
+			// 좋아요한 매장 ID를 맵으로 변환
+			likedMap := make(map[uint]bool)
+			for _, id := range likedStoreIDs {
+				likedMap[id] = true
+			}
+
+			// 각 매장에 is_liked 추가
+			storesWithLikes := make([]map[string]interface{}, len(stores))
+			for i, store := range stores {
+				storeMap := map[string]interface{}{
+					"id":               store.ID,
+					"user_id":          store.UserID,
+					"name":             store.Name,
+					"region":           store.Region,
+					"district":         store.District,
+					"address":          store.Address,
+					"latitude":         store.Latitude,
+					"longitude":        store.Longitude,
+					"phone_number":     store.PhoneNumber,
+					"image_url":        store.ImageURL,
+					"description":      store.Description,
+					"open_time":        store.OpenTime,
+					"close_time":       store.CloseTime,
+					"tags":             store.Tags,
+					"buying_gold":      store.BuyingGold,
+					"buying_platinum":  store.BuyingPlatinum,
+					"buying_silver":    store.BuyingSilver,
+					"created_at":       store.CreatedAt,
+					"updated_at":       store.UpdatedAt,
+					"is_liked":         likedMap[store.ID],
+				}
+				storesWithLikes[i] = storeMap
+			}
+			response["stores"] = storesWithLikes
+		}
+	}
+
 	log.Info("Stores listed", map[string]interface{}{
 		"count": len(stores),
 	})
 
-	c.JSON(http.StatusOK, gin.H{
-		"stores": stores,
-		"count":  len(stores),
-	})
+	c.JSON(http.StatusOK, response)
 }
 
 func (ctrl *StoreController) GetStoreByID(c *gin.Context) {
@@ -105,13 +148,24 @@ func (ctrl *StoreController) GetStoreByID(c *gin.Context) {
 		return
 	}
 
+	// 좋아요 상태 확인 (인증된 사용자만)
+	response := gin.H{
+		"store": store,
+	}
+
+	// 선택적으로 사용자 좋아요 상태 포함
+	if userID, exists := middleware.GetUserID(c); exists {
+		isLiked, err := ctrl.storeService.IsStoreLiked(uint(id), userID)
+		if err == nil {
+			response["is_liked"] = isLiked
+		}
+	}
+
 	log.Info("Store fetched", map[string]interface{}{
 		"store_id": store.ID,
 	})
 
-	c.JSON(http.StatusOK, gin.H{
-		"store": store,
-	})
+	c.JSON(http.StatusOK, response)
 }
 
 func (ctrl *StoreController) CreateStore(c *gin.Context) {
@@ -366,5 +420,101 @@ func (ctrl *StoreController) ListLocations(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"locations": locations,
 		"count":     len(locations),
+	})
+}
+
+// ToggleStoreLike 매장 좋아요 토글
+func (ctrl *StoreController) ToggleStoreLike(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	// 사용자 ID 가져오기
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		log.Warn("User ID not found in context for store like toggle", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "로그인이 필요합니다",
+		})
+		return
+	}
+
+	// 매장 ID 파싱
+	idStr := c.Param("id")
+	storeID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		log.Warn("Invalid store ID for like toggle", map[string]interface{}{
+			"store_id": idStr,
+			"error":    err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "잘못된 매장 ID입니다",
+		})
+		return
+	}
+
+	// 좋아요 토글
+	isLiked, err := ctrl.storeService.ToggleStoreLike(uint(storeID), userID)
+	if err != nil {
+		if err == service.ErrStoreNotFound {
+			log.Warn("Store not found for like toggle", map[string]interface{}{
+				"store_id": storeID,
+			})
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "매장을 찾을 수 없습니다",
+			})
+			return
+		}
+		log.Error("Failed to toggle store like", err, map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  userID,
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	log.Info("Store like toggled", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+		"is_liked": isLiked,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"is_liked": isLiked,
+	})
+}
+
+// GetUserLikedStores 사용자가 좋아요한 매장 목록 조회
+func (ctrl *StoreController) GetUserLikedStores(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		log.Warn("User ID not found in context", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Unauthorized",
+		})
+		return
+	}
+
+	stores, err := ctrl.storeService.GetUserLikedStores(userID)
+	if err != nil {
+		log.Error("Failed to get user liked stores", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to get liked stores",
+		})
+		return
+	}
+
+	log.Info("User liked stores retrieved", map[string]interface{}{
+		"user_id": userID,
+		"count":   len(stores),
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"stores": stores,
+		"count":  len(stores),
 	})
 }
