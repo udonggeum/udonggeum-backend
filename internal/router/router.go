@@ -15,6 +15,7 @@ type Router struct {
 	reviewController    *controller.ReviewController
 	uploadController    *controller.UploadController
 	tagController       *controller.TagController
+	chatController      *controller.ChatController
 	authMiddleware      *middleware.AuthMiddleware
 	config              *config.Config
 }
@@ -27,6 +28,7 @@ func NewRouter(
 	reviewController *controller.ReviewController,
 	uploadController *controller.UploadController,
 	tagController *controller.TagController,
+	chatController *controller.ChatController,
 	authMiddleware *middleware.AuthMiddleware,
 	cfg *config.Config,
 ) *Router {
@@ -38,6 +40,7 @@ func NewRouter(
 		reviewController:    reviewController,
 		uploadController:    uploadController,
 		tagController:       tagController,
+		chatController:      chatController,
 		authMiddleware:      authMiddleware,
 		config:              cfg,
 	}
@@ -177,6 +180,30 @@ func (r *Router) Setup() *gin.Engine {
 		tags := v1.Group("/tags")
 		{
 			tags.GET("", r.tagController.ListTags) // 태그 목록 조회 (카테고리 필터 가능)
+		}
+
+		// Chat routes
+		chats := v1.Group("/chats")
+		{
+			// WebSocket 연결
+			chats.GET("/ws",
+				r.authMiddleware.Authenticate(),
+				r.chatController.WebSocketHandler,
+			)
+
+			// 채팅방 관련
+			rooms := chats.Group("/rooms")
+			rooms.Use(r.authMiddleware.Authenticate())
+			{
+				rooms.POST("", r.chatController.CreateChatRoom)           // 채팅방 생성
+				rooms.GET("", r.chatController.GetChatRooms)              // 채팅방 목록
+				rooms.GET("/:id", r.chatController.GetChatRoom)           // 채팅방 상세
+				rooms.POST("/:id/join", r.chatController.JoinRoom)        // 채팅방 참여
+				rooms.POST("/:id/leave", r.chatController.LeaveRoom)      // 채팅방 나가기
+				rooms.POST("/:id/read", r.chatController.MarkAsRead)      // 읽음 처리
+				rooms.GET("/:id/messages", r.chatController.GetMessages)  // 메시지 목록
+				rooms.POST("/:id/messages", r.chatController.SendMessage) // 메시지 전송
+			}
 		}
 
 		// Community (금광산) routes

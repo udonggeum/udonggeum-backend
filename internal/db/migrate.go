@@ -26,6 +26,8 @@ func Migrate() error {
 		&model.ReviewLike{},
 		&model.Tag{},
 		&model.StoreTag{},
+		&model.ChatRoom{},
+		&model.Message{},
 	}
 
 	if err := DB.AutoMigrate(models...); err != nil {
