@@ -15,6 +15,7 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/router"
 	"github.com/ikkim/udonggeum-backend/internal/scheduler"
 	"github.com/ikkim/udonggeum-backend/internal/storage"
+	"github.com/ikkim/udonggeum-backend/internal/websocket"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 	redisClient "github.com/ikkim/udonggeum-backend/pkg/redis"
 )
@@ -77,6 +78,7 @@ func main() {
 	goldPriceRepo := repository.NewGoldPriceRepository(dbConn)
 	communityRepo := repository.NewCommunityRepository(dbConn)
 	reviewRepo := repository.NewReviewRepository(dbConn)
+	chatRepo := repository.NewChatRepository(dbConn)
 
 	authService := service.NewAuthService(
 		userRepo,
@@ -97,6 +99,12 @@ func main() {
 	reviewService := service.NewReviewService(reviewRepo, storeRepo)
 	tagService := service.NewTagService(dbConn)
 
+	// Initialize WebSocket hub
+	hub := websocket.NewHub()
+	go hub.Run() // Hub를 별도 goroutine에서 실행
+
+	chatService := service.NewChatService(chatRepo, hub)
+
 	// Initialize S3 storage
 	s3Storage := storage.NewS3Storage(
 		cfg.S3.Region,
@@ -113,6 +121,7 @@ func main() {
 	reviewController := controller.NewReviewController(reviewService)
 	uploadController := controller.NewUploadController(s3Storage)
 	tagController := controller.NewTagController(tagService)
+	chatController := controller.NewChatController(chatService, hub)
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
@@ -124,6 +133,7 @@ func main() {
 		reviewController,
 		uploadController,
 		tagController,
+		chatController,
 		authMiddleware,
 		cfg,
 	)
