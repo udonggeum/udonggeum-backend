@@ -50,8 +50,9 @@ func (c *Client) ReadPump() {
 			break
 		}
 
-		// 메시지 처리는 controller에서 HTTP를 통해 수행
-		// WebSocket은 실시간 수신만 담당
+		// Handle typing events
+		c.Hub.HandleClientMessage(c, message)
+
 		logger.Debug("WebSocket message received", map[string]interface{}{
 			"user_id": c.UserID,
 			"message": string(message),

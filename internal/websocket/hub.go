@@ -7,6 +7,12 @@ import (
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 )
 
+// ClientMessage 클라이언트로부터 받은 메시지
+type ClientMessage struct {
+	Type       string `json:"type"`        // typing_start, typing_stop
+	ChatRoomID uint   `json:"chat_room_id"`
+}
+
 // Client WebSocket 클라이언트
 type Client struct {
 	Hub      *Hub
@@ -207,4 +213,46 @@ func (h *Hub) GetOnlineUsersInRoom(roomID uint) []uint {
 		}
 	}
 	return users
+}
+
+// HandleClientMessage 클라이언트 메시지 처리
+func (h *Hub) HandleClientMessage(client *Client, message []byte) {
+	var msg ClientMessage
+	if err := json.Unmarshal(message, &msg); err != nil {
+		logger.Warn("Failed to parse client message", map[string]interface{}{
+			"user_id": client.UserID,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// typing 이벤트 처리
+	if msg.Type == "typing_start" || msg.Type == "typing_stop" {
+		// 클라이언트가 해당 채팅방에 참여 중인지 확인
+		client.mu.RLock()
+		_, isInRoom := client.ChatRooms[msg.ChatRoomID]
+		client.mu.RUnlock()
+
+		if !isInRoom {
+			logger.Warn("User not in chat room", map[string]interface{}{
+				"user_id": client.UserID,
+				"room_id": msg.ChatRoomID,
+			})
+			return
+		}
+
+		// 같은 채팅방의 다른 사용자에게 브로드캐스트
+		response := map[string]interface{}{
+			"type":        msg.Type,
+			"chat_room_id": msg.ChatRoomID,
+			"user_id":     client.UserID,
+		}
+
+		if err := h.SendToRoom(msg.ChatRoomID, response, client.UserID); err != nil {
+			logger.Error("Failed to broadcast typing event", err, map[string]interface{}{
+				"user_id": client.UserID,
+				"room_id": msg.ChatRoomID,
+			})
+		}
+	}
 }

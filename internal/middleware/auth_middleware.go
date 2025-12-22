@@ -31,32 +31,42 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log := GetLoggerFromContext(c)
 
+		var token string
+
+		// Try to get token from Authorization header first
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			log.Warn("Missing authorization header", map[string]interface{}{
+		if authHeader != "" {
+			// Extract token from "Bearer <token>"
+			parts := strings.Split(authHeader, " ")
+			if len(parts) != 2 || parts[0] != "Bearer" {
+				log.Warn("Invalid authorization header format", map[string]interface{}{
+					"path": c.Request.URL.Path,
+				})
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error": "Invalid authorization header format",
+				})
+				c.Abort()
+				return
+			}
+			token = parts[1]
+		} else {
+			// If no Authorization header, try to get token from query parameter (for WebSocket)
+			token = c.Query("token")
+			if token == "" {
+				log.Warn("Missing authorization header", map[string]interface{}{
+					"path": c.Request.URL.Path,
+				})
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error": "Authorization header is required",
+				})
+				c.Abort()
+				return
+			}
+			log.Debug("Using token from query parameter", map[string]interface{}{
 				"path": c.Request.URL.Path,
 			})
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Authorization header is required",
-			})
-			c.Abort()
-			return
 		}
 
-		// Extract token from "Bearer <token>"
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			log.Warn("Invalid authorization header format", map[string]interface{}{
-				"path": c.Request.URL.Path,
-			})
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid authorization header format",
-			})
-			c.Abort()
-			return
-		}
-
-		token := parts[1]
 		claims, err := util.ValidateToken(token, m.jwtSecret)
 		if err != nil {
 			log.Warn("Token validation failed", map[string]interface{}{
