@@ -184,6 +184,10 @@ func (r *Router) Setup() *gin.Engine {
 				r.authMiddleware.Authenticate(),
 				r.uploadController.GeneratePresignedURL,
 			)
+			upload.POST("/chat/presigned-url",
+				r.authMiddleware.Authenticate(),
+				r.uploadController.GenerateChatFilePresignedURL,
+			)
 		}
 
 		// Tags routes
@@ -201,18 +205,26 @@ func (r *Router) Setup() *gin.Engine {
 				r.chatController.WebSocketHandler,
 			)
 
+			// 메시지 검색
+			chats.GET("/search",
+				r.authMiddleware.Authenticate(),
+				r.chatController.SearchMessages,
+			)
+
 			// 채팅방 관련
 			rooms := chats.Group("/rooms")
 			rooms.Use(r.authMiddleware.Authenticate())
 			{
-				rooms.POST("", r.chatController.CreateChatRoom)           // 채팅방 생성
-				rooms.GET("", r.chatController.GetChatRooms)              // 채팅방 목록
-				rooms.GET("/:id", r.chatController.GetChatRoom)           // 채팅방 상세
-				rooms.POST("/:id/join", r.chatController.JoinRoom)        // 채팅방 참여
-				rooms.POST("/:id/leave", r.chatController.LeaveRoom)      // 채팅방 나가기
-				rooms.POST("/:id/read", r.chatController.MarkAsRead)      // 읽음 처리
-				rooms.GET("/:id/messages", r.chatController.GetMessages)  // 메시지 목록
-				rooms.POST("/:id/messages", r.chatController.SendMessage) // 메시지 전송
+				rooms.POST("", r.chatController.CreateChatRoom)                               // 채팅방 생성
+				rooms.GET("", r.chatController.GetChatRooms)                                  // 채팅방 목록
+				rooms.GET("/:id", r.chatController.GetChatRoom)                               // 채팅방 상세
+				rooms.POST("/:id/join", r.chatController.JoinRoom)                            // 채팅방 참여
+				rooms.POST("/:id/leave", r.chatController.LeaveRoom)                          // 채팅방 나가기
+				rooms.POST("/:id/read", r.chatController.MarkAsRead)                          // 읽음 처리
+				rooms.GET("/:id/messages", r.chatController.GetMessages)                      // 메시지 목록
+				rooms.POST("/:id/messages", r.chatController.SendMessage)                     // 메시지 전송
+				rooms.PATCH("/:id/messages/:messageId", r.chatController.UpdateMessage)       // 메시지 수정
+				rooms.DELETE("/:id/messages/:messageId", r.chatController.DeleteMessage)      // 메시지 삭제
 			}
 		}
 

@@ -17,7 +17,11 @@ type ChatService interface {
 
 	// Message operations
 	SendMessage(roomID, senderID uint, content string, messageType string) (*model.Message, error)
+	SendMessageWithFile(roomID, senderID uint, content string, messageType string, fileURL string, fileName string) (*model.Message, error)
 	GetChatRoomMessages(roomID, userID uint, page, pageSize int) ([]model.Message, int64, error)
+	SearchMessages(userID uint, keyword string, page, pageSize int) ([]model.Message, int64, error)
+	UpdateMessage(messageID, userID uint, content string) (*model.Message, error)
+	DeleteMessage(messageID, userID uint) error
 
 	// WebSocket operations
 	JoinChatRoom(userID, roomID uint) error
@@ -129,7 +133,23 @@ func (s *chatService) MarkChatRoomAsRead(roomID, userID uint) error {
 	}
 
 	// 채팅방의 읽지 않은 메시지 수 초기화
-	return s.repo.ResetUnreadCount(roomID, userID)
+	if err := s.repo.ResetUnreadCount(roomID, userID); err != nil {
+		return err
+	}
+
+	// 상대방에게 읽음 이벤트 전송 (WebSocket)
+	go func() {
+		wsMessage := map[string]interface{}{
+			"type":         "read",
+			"chat_room_id": roomID,
+			"user_id":      userID,
+		}
+
+		// 상대방에게 읽음 이벤트 전송
+		s.hub.SendToRoom(roomID, wsMessage, userID)
+	}()
+
+	return nil
 }
 
 // SendMessage 메시지 전송
@@ -212,8 +232,175 @@ func (s *chatService) JoinChatRoom(userID, roomID uint) error {
 	return nil
 }
 
-// LeaveChatRoom 채팅방 나가기 (WebSocket)
+// LeaveChatRoom 채팅방 나가기 (DB에서 나가기 + WebSocket)
 func (s *chatService) LeaveChatRoom(userID, roomID uint) error {
+	// 권한 검증
+	if _, err := s.GetChatRoom(roomID, userID); err != nil {
+		return err
+	}
+
+	// DB에서 채팅방 나가기 (soft delete)
+	if err := s.repo.LeaveChatRoom(roomID, userID); err != nil {
+		return err
+	}
+
+	// WebSocket 연결 끊기
 	s.hub.LeaveRoom(userID, roomID)
+
+	// 양쪽 모두 나갔으면 채팅방 삭제
+	if err := s.repo.DeleteChatRoomIfBothLeft(roomID); err != nil {
+		// 삭제 실패해도 무시 (중요하지 않음)
+		return nil
+	}
+
+	return nil
+}
+
+// SearchMessages 메시지 검색
+func (s *chatService) SearchMessages(userID uint, keyword string, page, pageSize int) ([]model.Message, int64, error) {
+	offset := (page - 1) * pageSize
+	return s.repo.SearchMessages(userID, keyword, pageSize, offset)
+}
+
+// SendMessageWithFile 파일이 포함된 메시지 전송
+func (s *chatService) SendMessageWithFile(roomID, senderID uint, content string, messageType string, fileURL string, fileName string) (*model.Message, error) {
+	// 채팅방 권한 검증
+	room, err := s.GetChatRoom(roomID, senderID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 메시지 타입 기본값
+	if messageType == "" {
+		messageType = "TEXT"
+	}
+
+	// 메시지 생성
+	message := &model.Message{
+		ChatRoomID:  roomID,
+		SenderID:    senderID,
+		Content:     content,
+		MessageType: messageType,
+		FileURL:     fileURL,
+		FileName:    fileName,
+		IsRead:      false,
+	}
+
+	if err := s.repo.CreateMessage(message); err != nil {
+		return nil, err
+	}
+
+	// 메시지를 다시 조회 (Sender 정보 포함)
+	createdMessage, err := s.repo.GetMessageByID(message.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 채팅방의 마지막 메시지 정보 업데이트
+	lastMessageContent := content
+	if messageType == "IMAGE" {
+		lastMessageContent = "📷 이미지"
+	} else if messageType == "FILE" {
+		lastMessageContent = "📎 " + fileName
+	}
+	if err := s.repo.UpdateChatRoomLastMessage(roomID, message.ID, lastMessageContent, message.CreatedAt); err != nil {
+		return nil, err
+	}
+
+	// 수신자의 읽지 않은 메시지 수 증가
+	recipientID := room.User1ID
+	if senderID == room.User1ID {
+		recipientID = room.User2ID
+	}
+	if err := s.repo.IncrementUnreadCount(roomID, recipientID); err != nil {
+		return nil, err
+	}
+
+	// WebSocket으로 실시간 전송
+	go func() {
+		wsMessage := map[string]interface{}{
+			"type":    "new_message",
+			"message": createdMessage,
+		}
+		s.hub.SendToRoom(roomID, wsMessage, senderID)
+	}()
+
+	return createdMessage, nil
+}
+
+// UpdateMessage 메시지 수정
+func (s *chatService) UpdateMessage(messageID, userID uint, content string) (*model.Message, error) {
+	// 메시지 조회
+	message, err := s.repo.GetMessageByID(messageID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 권한 검증: 본인이 작성한 메시지인지 확인
+	if message.SenderID != userID {
+		return nil, errors.New("unauthorized to update this message")
+	}
+
+	// 삭제된 메시지는 수정 불가
+	if message.IsDeleted {
+		return nil, errors.New("cannot update deleted message")
+	}
+
+	// 메시지 수정
+	if err := s.repo.UpdateMessage(messageID, content); err != nil {
+		return nil, err
+	}
+
+	// 수정된 메시지 다시 조회
+	updatedMessage, err := s.repo.GetMessageByID(messageID)
+	if err != nil {
+		return nil, err
+	}
+
+	// WebSocket으로 실시간 전송
+	go func() {
+		wsMessage := map[string]interface{}{
+			"type":    "message_updated",
+			"message": updatedMessage,
+		}
+		s.hub.SendToRoom(updatedMessage.ChatRoomID, wsMessage, userID)
+	}()
+
+	return updatedMessage, nil
+}
+
+// DeleteMessage 메시지 삭제
+func (s *chatService) DeleteMessage(messageID, userID uint) error {
+	// 메시지 조회
+	message, err := s.repo.GetMessageByID(messageID)
+	if err != nil {
+		return err
+	}
+
+	// 권한 검증: 본인이 작성한 메시지인지 확인
+	if message.SenderID != userID {
+		return errors.New("unauthorized to delete this message")
+	}
+
+	// 이미 삭제된 메시지
+	if message.IsDeleted {
+		return errors.New("message already deleted")
+	}
+
+	// 메시지 삭제
+	if err := s.repo.DeleteMessage(messageID, userID); err != nil {
+		return err
+	}
+
+	// WebSocket으로 실시간 전송
+	go func() {
+		wsMessage := map[string]interface{}{
+			"type":       "message_deleted",
+			"message_id": messageID,
+			"room_id":    message.ChatRoomID,
+		}
+		s.hub.SendToRoom(message.ChatRoomID, wsMessage, userID)
+	}()
+
 	return nil
 }

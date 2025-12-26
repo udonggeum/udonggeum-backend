@@ -45,6 +45,8 @@ type CreateChatRoomRequest struct {
 type SendMessageRequest struct {
 	Content     string `json:"content" binding:"required"`
 	MessageType string `json:"message_type,omitempty"` // TEXT, IMAGE, FILE 등
+	FileURL     string `json:"file_url,omitempty"`     // 파일/이미지 URL
+	FileName    string `json:"file_name,omitempty"`    // 원본 파일명
 }
 
 // CreateChatRoom 채팅방 생성 또는 기존 채팅방 가져오기
@@ -244,7 +246,7 @@ func (ctrl *ChatController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	message, err := ctrl.chatService.SendMessage(uint(roomID), userID, req.Content, req.MessageType)
+	message, err := ctrl.chatService.SendMessageWithFile(uint(roomID), userID, req.Content, req.MessageType, req.FileURL, req.FileName)
 	if err != nil {
 		if err.Error() == "unauthorized access to chat room" {
 			c.JSON(http.StatusForbidden, gin.H{
@@ -312,8 +314,11 @@ func (ctrl *ChatController) MarkAsRead(c *gin.Context) {
 
 // WebSocketHandler WebSocket 연결 처리
 // GET /api/v1/chats/ws
+// 쿼리 파라미터로 토큰을 받지만, 로깅하지 않음 (보안)
 func (ctrl *ChatController) WebSocketHandler(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
+
+	// 미들웨어에서 이미 인증 완료
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -414,6 +419,159 @@ func (ctrl *ChatController) LeaveRoom(c *gin.Context) {
 
 	log.Info("Left chat room", map[string]interface{}{
 		"room_id": roomID,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+	})
+}
+
+// SearchMessages 메시지 검색
+// GET /api/v1/chats/search?q=keyword
+func (ctrl *ChatController) SearchMessages(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	keyword := c.Query("q")
+	if keyword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Search keyword is required",
+		})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+	messages, total, err := ctrl.chatService.SearchMessages(userID, keyword, page, pageSize)
+	if err != nil {
+		log.Error("Failed to search messages", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to search messages",
+		})
+		return
+	}
+
+	log.Info("Messages searched", map[string]interface{}{
+		"keyword": keyword,
+		"count":   len(messages),
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"messages":    messages,
+		"total":       total,
+		"page":        page,
+		"page_size":   pageSize,
+		"total_pages": (total + int64(pageSize) - 1) / int64(pageSize),
+	})
+}
+
+// UpdateMessageRequest 메시지 수정 요청
+type UpdateMessageRequest struct {
+	Content string `json:"content" binding:"required"`
+}
+
+// UpdateMessage 메시지 수정
+// PATCH /api/v1/chats/rooms/:id/messages/:messageId
+func (ctrl *ChatController) UpdateMessage(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	messageID, err := strconv.ParseUint(c.Param("messageId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid message ID",
+		})
+		return
+	}
+
+	var req UpdateMessageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Error("Invalid request", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	message, err := ctrl.chatService.UpdateMessage(uint(messageID), userID, req.Content)
+	if err != nil {
+		if err.Error() == "unauthorized to update this message" {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "Unauthorized to update this message",
+			})
+			return
+		}
+		if err.Error() == "cannot update deleted message" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Cannot update deleted message",
+			})
+			return
+		}
+		log.Error("Failed to update message", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to update message",
+		})
+		return
+	}
+
+	log.Info("Message updated", map[string]interface{}{
+		"message_id": messageID,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": message,
+	})
+}
+
+// DeleteMessage 메시지 삭제
+// DELETE /api/v1/chats/rooms/:id/messages/:messageId
+func (ctrl *ChatController) DeleteMessage(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	messageID, err := strconv.ParseUint(c.Param("messageId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid message ID",
+		})
+		return
+	}
+
+	if err := ctrl.chatService.DeleteMessage(uint(messageID), userID); err != nil {
+		if err.Error() == "unauthorized to delete this message" {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "Unauthorized to delete this message",
+			})
+			return
+		}
+		if err.Error() == "message already deleted" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Message already deleted",
+			})
+			return
+		}
+		log.Error("Failed to delete message", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to delete message",
+		})
+		return
+	}
+
+	log.Info("Message deleted", map[string]interface{}{
+		"message_id": messageID,
 	})
 
 	c.JSON(http.StatusOK, gin.H{

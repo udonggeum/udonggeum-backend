@@ -17,6 +17,9 @@ type ChatRepository interface {
 	UpdateChatRoomLastMessage(roomID uint, messageID uint, content string, timestamp time.Time) error
 	IncrementUnreadCount(roomID uint, recipientID uint) error
 	ResetUnreadCount(roomID uint, userID uint) error
+	LeaveChatRoom(roomID uint, userID uint) error        // 채팅방 나가기
+	RejoinChatRoom(roomID uint, userID uint) error       // 채팅방 다시 참여
+	DeleteChatRoomIfBothLeft(roomID uint) error          // 양쪽 모두 나간 경우 삭제
 
 	// Message operations
 	CreateMessage(message *model.Message) error
@@ -24,6 +27,9 @@ type ChatRepository interface {
 	GetChatRoomMessages(roomID uint, limit, offset int) ([]model.Message, int64, error)
 	MarkMessagesAsRead(roomID uint, recipientID uint) error
 	GetUnreadMessageCount(roomID uint, userID uint) (int64, error)
+	SearchMessages(userID uint, keyword string, limit, offset int) ([]model.Message, int64, error) // 메시지 검색
+	UpdateMessage(messageID uint, content string) error                                              // 메시지 수정
+	DeleteMessage(messageID uint, deletedBy uint) error                                              // 메시지 삭제
 }
 
 type chatRepository struct {
@@ -85,13 +91,16 @@ func (r *chatRepository) FindExistingChatRoom(user1ID, user2ID uint, roomType mo
 	return &room, nil
 }
 
-// GetUserChatRooms 사용자의 채팅방 목록 조회
+// GetUserChatRooms 사용자의 채팅방 목록 조회 (나간 방 제외)
 func (r *chatRepository) GetUserChatRooms(userID uint, limit, offset int) ([]model.ChatRoom, int64, error) {
 	var rooms []model.ChatRoom
 	var total int64
 
 	query := r.db.Model(&model.ChatRoom{}).
-		Where("user1_id = ? OR user2_id = ?", userID, userID).
+		Where(
+			r.db.Where("user1_id = ? AND user1_left_at IS NULL", userID).
+				Or("user2_id = ? AND user2_left_at IS NULL", userID),
+		).
 		Preload("User1").
 		Preload("User2")
 
@@ -224,4 +233,125 @@ func (r *chatRepository) GetUnreadMessageCount(roomID uint, userID uint) (int64,
 		return 0, err
 	}
 	return count, nil
+}
+
+// LeaveChatRoom 채팅방 나가기 (soft delete for specific user)
+func (r *chatRepository) LeaveChatRoom(roomID uint, userID uint) error {
+	var room model.ChatRoom
+	if err := r.db.First(&room, roomID).Error; err != nil {
+		return err
+	}
+
+	now := time.Now()
+	if room.User1ID == userID {
+		return r.db.Model(&model.ChatRoom{}).
+			Where("id = ?", roomID).
+			Update("user1_left_at", now).Error
+	} else if room.User2ID == userID {
+		return r.db.Model(&model.ChatRoom{}).
+			Where("id = ?", roomID).
+			Update("user2_left_at", now).Error
+	}
+
+	return nil
+}
+
+// RejoinChatRoom 채팅방 다시 참여 (나간 상태 해제)
+func (r *chatRepository) RejoinChatRoom(roomID uint, userID uint) error {
+	var room model.ChatRoom
+	if err := r.db.First(&room, roomID).Error; err != nil {
+		return err
+	}
+
+	if room.User1ID == userID {
+		return r.db.Model(&model.ChatRoom{}).
+			Where("id = ?", roomID).
+			Update("user1_left_at", nil).Error
+	} else if room.User2ID == userID {
+		return r.db.Model(&model.ChatRoom{}).
+			Where("id = ?", roomID).
+			Update("user2_left_at", nil).Error
+	}
+
+	return nil
+}
+
+// DeleteChatRoomIfBothLeft 양쪽 사용자 모두 나간 경우 채팅방 삭제
+func (r *chatRepository) DeleteChatRoomIfBothLeft(roomID uint) error {
+	var room model.ChatRoom
+	if err := r.db.First(&room, roomID).Error; err != nil {
+		return err
+	}
+
+	// 양쪽 모두 나갔으면 실제 삭제 (hard delete)
+	if room.User1LeftAt != nil && room.User2LeftAt != nil {
+		return r.db.Unscoped().Delete(&model.ChatRoom{}, roomID).Error
+	}
+
+	return nil
+}
+
+// SearchMessages 사용자의 모든 채팅방에서 메시지 검색
+func (r *chatRepository) SearchMessages(userID uint, keyword string, limit, offset int) ([]model.Message, int64, error) {
+	var messages []model.Message
+	var total int64
+
+	// 사용자가 참여한 채팅방 ID 목록 가져오기
+	var roomIDs []uint
+	if err := r.db.Model(&model.ChatRoom{}).
+		Where("(user1_id = ? AND user1_left_at IS NULL) OR (user2_id = ? AND user2_left_at IS NULL)", userID, userID).
+		Pluck("id", &roomIDs).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if len(roomIDs) == 0 {
+		return []model.Message{}, 0, nil
+	}
+
+	// 키워드로 메시지 검색
+	query := r.db.Model(&model.Message{}).
+		Where("chat_room_id IN ?", roomIDs).
+		Where("content LIKE ?", "%"+keyword+"%").
+		Preload("Sender").
+		Preload("ChatRoom")
+
+	// 전체 개수 조회
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// 메시지 조회 (최신순)
+	if err := query.
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&messages).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return messages, total, nil
+}
+
+// UpdateMessage 메시지 수정
+func (r *chatRepository) UpdateMessage(messageID uint, content string) error {
+	now := time.Now()
+	return r.db.Model(&model.Message{}).
+		Where("id = ?", messageID).
+		Updates(map[string]interface{}{
+			"content":    content,
+			"is_edited":  true,
+			"edited_at":  now,
+			"updated_at": now,
+		}).Error
+}
+
+// DeleteMessage 메시지 삭제 (soft delete)
+func (r *chatRepository) DeleteMessage(messageID uint, deletedBy uint) error {
+	return r.db.Model(&model.Message{}).
+		Where("id = ?", messageID).
+		Updates(map[string]interface{}{
+			"is_deleted": true,
+			"deleted_by": deletedBy,
+			"content":    "삭제된 메시지입니다",
+		}).Error
 }
