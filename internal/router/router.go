@@ -263,7 +263,20 @@ func (r *Router) Setup() *gin.Engine {
 					r.authMiddleware.Authenticate(),
 					r.communityController.AcceptAnswer,
 				)
+
+				// Pin/Unpin
+				posts.POST("/:id/pin",
+					r.authMiddleware.Authenticate(),
+					r.communityController.PinPost,
+				)
+				posts.POST("/:id/unpin",
+					r.authMiddleware.Authenticate(),
+					r.communityController.UnpinPost,
+				)
 			}
+
+			// Gallery route
+			community.GET("/gallery", r.communityController.GetStoreGallery)
 
 			// Comment routes
 			comments := community.Group("/comments")

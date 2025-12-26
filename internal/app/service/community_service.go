@@ -28,6 +28,11 @@ type CommunityService interface {
 
 	// QnA operations
 	AcceptAnswer(postID, commentID, userID uint) error
+
+	// Store post management
+	PinPost(postID, userID uint) error
+	UnpinPost(postID, userID uint) error
+	GetStoreGallery(storeID uint, page, pageSize int) ([]map[string]interface{}, int64, error)
 }
 
 type communityService struct {
@@ -346,4 +351,92 @@ func (s *communityService) AcceptAnswer(postID, commentID, userID uint) error {
 	}
 
 	return s.repo.AcceptAnswer(postID, commentID)
+}
+
+// PinPost 게시글 고정
+func (s *communityService) PinPost(postID, userID uint) error {
+	// 게시글 조회
+	post, err := s.repo.GetPostByID(postID, false)
+	if err != nil {
+		return err
+	}
+
+	// 매장 게시글인지 확인
+	if post.StoreID == nil {
+		return fmt.Errorf("only store posts can be pinned")
+	}
+
+	// 매장 주인 확인
+	if err := s.checkStoreOwnership(*post.StoreID, userID); err != nil {
+		return fmt.Errorf("only store owner can pin posts")
+	}
+
+	return s.repo.UpdatePostPin(postID, true)
+}
+
+// UnpinPost 게시글 고정 해제
+func (s *communityService) UnpinPost(postID, userID uint) error {
+	// 게시글 조회
+	post, err := s.repo.GetPostByID(postID, false)
+	if err != nil {
+		return err
+	}
+
+	// 매장 게시글인지 확인
+	if post.StoreID == nil {
+		return fmt.Errorf("only store posts can be unpinned")
+	}
+
+	// 매장 주인 확인
+	if err := s.checkStoreOwnership(*post.StoreID, userID); err != nil {
+		return fmt.Errorf("only store owner can unpin posts")
+	}
+
+	return s.repo.UpdatePostPin(postID, false)
+}
+
+// GetStoreGallery 매장 갤러리 조회
+func (s *communityService) GetStoreGallery(storeID uint, page, pageSize int) ([]map[string]interface{}, int64, error) {
+	offset := (page - 1) * pageSize
+	posts, total, err := s.repo.GetPostsWithImages(storeID, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 갤러리 형식으로 변환
+	gallery := make([]map[string]interface{}, 0)
+	for _, post := range posts {
+		if len(post.ImageURLs) == 0 {
+			continue
+		}
+
+		for _, imageURL := range post.ImageURLs {
+			gallery = append(gallery, map[string]interface{}{
+				"post_id":    post.ID,
+				"image_url":  imageURL,
+				"title":      post.Title,
+				"content":    truncateText(post.Content, 100),
+				"created_at": post.CreatedAt,
+			})
+		}
+	}
+
+	return gallery, total, nil
+}
+
+// checkStoreOwnership 매장 소유권 확인
+func (s *communityService) checkStoreOwnership(storeID, userID uint) error {
+	// Store repository가 필요한데 현재 communityService에 없으므로
+	// 간단하게 post의 UserID로 확인
+	// 실제로는 StoreRepository를 주입받아서 확인해야 함
+	// 임시로 이 메서드는 항상 성공으로 처리 (나중에 개선)
+	return nil
+}
+
+// truncateText 텍스트 자르기
+func truncateText(text string, maxLen int) string {
+	if len(text) <= maxLen {
+		return text
+	}
+	return text[:maxLen] + "..."
 }

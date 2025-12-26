@@ -18,7 +18,10 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 512 * 1024 // 512KB
+	maxMessageSize = 100 * 1024 // 100KB (기존 512KB에서 축소)
+
+	// Rate limiting: 최대 메시지 수 (1초당)
+	maxMessagesPerSecond = 10
 )
 
 // Conn WebSocket 연결 래퍼
@@ -78,21 +81,24 @@ func (c *Client) WritePump() {
 				return
 			}
 
-			w, err := c.Conn.NextWriter(websocket.TextMessage)
-			if err != nil {
+			// 메시지를 개별적으로 JSON으로 전송
+			if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				logger.Error("Failed to write message", err, map[string]interface{}{
+					"user_id": c.UserID,
+				})
 				return
 			}
-			w.Write(message)
 
-			// 대기 중인 메시지를 모두 전송
+			// 대기 중인 메시지도 개별적으로 전송 (배치 처리)
 			n := len(c.Send)
 			for i := 0; i < n; i++ {
-				w.Write([]byte{'\n'})
-				w.Write(<-c.Send)
-			}
-
-			if err := w.Close(); err != nil {
-				return
+				msg := <-c.Send
+				if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+					logger.Error("Failed to write queued message", err, map[string]interface{}{
+						"user_id": c.UserID,
+					})
+					return
+				}
 			}
 
 		case <-ticker.C:

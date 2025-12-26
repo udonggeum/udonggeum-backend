@@ -158,16 +158,16 @@ func (s *chatService) MarkChatRoomAsRead(roomID, userID uint) error {
 	}
 
 	// 상대방에게 읽음 이벤트 전송 (WebSocket)
-	go func() {
-		wsMessage := map[string]interface{}{
-			"type":         "read",
-			"chat_room_id": roomID,
-			"user_id":      userID,
-		}
+	wsMessage := map[string]interface{}{
+		"type":         "read",
+		"chat_room_id": roomID,
+		"user_id":      userID,
+	}
 
-		// 상대방에게 읽음 이벤트 전송
-		s.hub.SendToRoom(roomID, wsMessage, userID)
-	}()
+	// 비동기 전송 (에러는 로깅만 - 실패해도 주요 로직에 영향 없음)
+	if err := s.hub.SendToRoom(roomID, wsMessage, userID); err != nil {
+		// 로깅은 hub 내부에서 처리
+	}
 
 	return nil
 }
@@ -219,13 +219,13 @@ func (s *chatService) SendMessage(roomID, senderID uint, content string, message
 	}
 
 	// WebSocket으로 실시간 전송
-	go func() {
-		wsMessage := map[string]interface{}{
-			"type":    "new_message",
-			"message": createdMessage,
-		}
-		s.hub.SendToRoom(roomID, wsMessage, senderID)
-	}()
+	wsMessage := map[string]interface{}{
+		"type":    "new_message",
+		"message": createdMessage,
+	}
+	if err := s.hub.SendToRoom(roomID, wsMessage, senderID); err != nil {
+		// 로깅은 hub 내부에서 처리
+	}
 
 	return createdMessage, nil
 }
@@ -342,13 +342,13 @@ func (s *chatService) SendMessageWithFile(roomID, senderID uint, content string,
 	}
 
 	// WebSocket으로 실시간 전송
-	go func() {
-		wsMessage := map[string]interface{}{
-			"type":    "new_message",
-			"message": createdMessage,
-		}
-		s.hub.SendToRoom(roomID, wsMessage, senderID)
-	}()
+	wsMessage := map[string]interface{}{
+		"type":    "new_message",
+		"message": createdMessage,
+	}
+	if err := s.hub.SendToRoom(roomID, wsMessage, senderID); err != nil {
+		// 로깅은 hub 내부에서 처리
+	}
 
 	return createdMessage, nil
 }
@@ -383,13 +383,13 @@ func (s *chatService) UpdateMessage(messageID, userID uint, content string) (*mo
 	}
 
 	// WebSocket으로 실시간 전송
-	go func() {
-		wsMessage := map[string]interface{}{
-			"type":    "message_updated",
-			"message": updatedMessage,
-		}
-		s.hub.SendToRoom(updatedMessage.ChatRoomID, wsMessage, userID)
-	}()
+	wsMessage := map[string]interface{}{
+		"type":    "message_updated",
+		"message": updatedMessage,
+	}
+	if err := s.hub.SendToRoom(updatedMessage.ChatRoomID, wsMessage, userID); err != nil {
+		// 로깅은 hub 내부에서 처리
+	}
 
 	return updatedMessage, nil
 }
@@ -418,14 +418,14 @@ func (s *chatService) DeleteMessage(messageID, userID uint) error {
 	}
 
 	// WebSocket으로 실시간 전송
-	go func() {
-		wsMessage := map[string]interface{}{
-			"type":       "message_deleted",
-			"message_id": messageID,
-			"room_id":    message.ChatRoomID,
-		}
-		s.hub.SendToRoom(message.ChatRoomID, wsMessage, userID)
-	}()
+	wsMessage := map[string]interface{}{
+		"type":       "message_deleted",
+		"message_id": messageID,
+		"room_id":    message.ChatRoomID,
+	}
+	if err := s.hub.SendToRoom(message.ChatRoomID, wsMessage, userID); err != nil {
+		// 로깅은 hub 내부에서 처리
+	}
 
 	return nil
 }

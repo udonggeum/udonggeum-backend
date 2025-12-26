@@ -3,8 +3,14 @@ package websocket
 import (
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
+)
+
+const (
+	// Rate limiting: 최대 메시지 수 (1초당)
+	maxMessagesPerSecond = 10
 )
 
 // ClientMessage 클라이언트로부터 받은 메시지
@@ -15,18 +21,21 @@ type ClientMessage struct {
 
 // Client WebSocket 클라이언트
 type Client struct {
-	Hub      *Hub
-	Conn     *Conn
-	UserID   uint
-	Send     chan []byte
-	ChatRooms map[uint]bool // 현재 참여 중인 채팅방 IDs
-	mu       sync.RWMutex
+	Hub           *Hub
+	Conn          *Conn
+	UserID        uint
+	Send          chan []byte
+	ChatRooms     map[uint]bool // 현재 참여 중인 채팅방 IDs
+	mu            sync.RWMutex
+	messageCount  int       // 최근 1초간 받은 메시지 수
+	lastResetTime time.Time // 마지막 카운터 리셋 시간
+	rateMu        sync.Mutex
 }
 
 // Hub WebSocket 연결 관리자
 type Hub struct {
-	// 등록된 클라이언트들 (UserID -> Client)
-	clients map[uint]*Client
+	// 등록된 클라이언트들 (UserID -> []*Client - 멀티 디바이스 지원)
+	clients map[uint][]*Client
 
 	// 채팅방별 클라이언트들 (ChatRoomID -> map[UserID]bool)
 	rooms map[uint]map[uint]bool
@@ -53,11 +62,11 @@ type BroadcastMessage struct {
 // NewHub Hub 생성
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[uint]*Client),
+		clients:    make(map[uint][]*Client),
 		rooms:      make(map[uint]map[uint]bool),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan *BroadcastMessage),
+		register:   make(chan *Client, 256),
+		unregister: make(chan *Client, 256),
+		broadcast:  make(chan *BroadcastMessage, 1024),
 	}
 }
 
@@ -67,33 +76,50 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
-			h.clients[client.UserID] = client
+			// 멀티 디바이스 지원: 클라이언트 리스트에 추가
+			h.clients[client.UserID] = append(h.clients[client.UserID], client)
 			h.mu.Unlock()
 			logger.Info("WebSocket client registered", map[string]interface{}{
-				"user_id": client.UserID,
+				"user_id":        client.UserID,
+				"total_sessions": len(h.clients[client.UserID]),
 			})
 
 		case client := <-h.unregister:
 			h.mu.Lock()
-			if _, ok := h.clients[client.UserID]; ok {
-				// 모든 채팅방에서 제거
-				client.mu.RLock()
-				for roomID := range client.ChatRooms {
-					if users, ok := h.rooms[roomID]; ok {
-						delete(users, client.UserID)
-						if len(users) == 0 {
-							delete(h.rooms, roomID)
-						}
+			if clientList, ok := h.clients[client.UserID]; ok {
+				// 해당 클라이언트만 리스트에서 제거
+				newList := make([]*Client, 0, len(clientList))
+				for _, c := range clientList {
+					if c != client {
+						newList = append(newList, c)
 					}
 				}
-				client.mu.RUnlock()
 
-				delete(h.clients, client.UserID)
+				if len(newList) == 0 {
+					// 마지막 세션이면 맵에서 삭제
+					delete(h.clients, client.UserID)
+
+					// 모든 채팅방에서 제거
+					client.mu.RLock()
+					for roomID := range client.ChatRooms {
+						if users, ok := h.rooms[roomID]; ok {
+							delete(users, client.UserID)
+							if len(users) == 0 {
+								delete(h.rooms, roomID)
+							}
+						}
+					}
+					client.mu.RUnlock()
+				} else {
+					h.clients[client.UserID] = newList
+				}
+
 				close(client.Send)
 			}
 			h.mu.Unlock()
 			logger.Info("WebSocket client unregistered", map[string]interface{}{
-				"user_id": client.UserID,
+				"user_id":             client.UserID,
+				"remaining_sessions": len(h.clients[client.UserID]),
 			})
 
 		case message := <-h.broadcast:
@@ -105,13 +131,19 @@ func (h *Hub) Run() {
 						continue
 					}
 
-					if client, ok := h.clients[userID]; ok {
-						select {
-						case client.Send <- message.Message:
-						default:
-							// Send 채널이 막혀있으면 클라이언트 연결 종료
-							close(client.Send)
-							delete(h.clients, client.UserID)
+					// 멀티 디바이스: 모든 세션에 전송
+					if clientList, ok := h.clients[userID]; ok {
+						for _, client := range clientList {
+							select {
+							case client.Send <- message.Message:
+								// 전송 성공
+							default:
+								// Send 채널이 막혀있음 - 비동기로 정리
+								go h.Unregister(client)
+								logger.Warn("Client send buffer full, disconnecting", map[string]interface{}{
+									"user_id": userID,
+								})
+							}
 						}
 					}
 				}
@@ -126,10 +158,13 @@ func (h *Hub) JoinRoom(userID, roomID uint) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if client, ok := h.clients[userID]; ok {
-		client.mu.Lock()
-		client.ChatRooms[roomID] = true
-		client.mu.Unlock()
+	// 멀티 디바이스: 모든 세션을 채팅방에 추가
+	if clientList, ok := h.clients[userID]; ok {
+		for _, client := range clientList {
+			client.mu.Lock()
+			client.ChatRooms[roomID] = true
+			client.mu.Unlock()
+		}
 
 		if _, ok := h.rooms[roomID]; !ok {
 			h.rooms[roomID] = make(map[uint]bool)
@@ -148,10 +183,13 @@ func (h *Hub) LeaveRoom(userID, roomID uint) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if client, ok := h.clients[userID]; ok {
-		client.mu.Lock()
-		delete(client.ChatRooms, roomID)
-		client.mu.Unlock()
+	// 멀티 디바이스: 모든 세션에서 채팅방 제거
+	if clientList, ok := h.clients[userID]; ok {
+		for _, client := range clientList {
+			client.mu.Lock()
+			delete(client.ChatRooms, roomID)
+			client.mu.Unlock()
+		}
 	}
 
 	if users, ok := h.rooms[roomID]; ok {
@@ -171,16 +209,23 @@ func (h *Hub) LeaveRoom(userID, roomID uint) {
 func (h *Hub) SendToRoom(roomID uint, message interface{}, senderID uint) error {
 	data, err := json.Marshal(message)
 	if err != nil {
+		logger.Error("Failed to marshal message", err, nil)
 		return err
 	}
 
-	h.broadcast <- &BroadcastMessage{
+	select {
+	case h.broadcast <- &BroadcastMessage{
 		ChatRoomID: roomID,
 		Message:    data,
 		SenderID:   senderID,
+	}:
+		return nil
+	default:
+		logger.Warn("Broadcast channel full, message dropped", map[string]interface{}{
+			"room_id": roomID,
+		})
+		return nil // 메시지 손실을 허용 (주요 로직에 영향 없음)
 	}
-
-	return nil
 }
 
 // Register 클라이언트 등록
@@ -217,6 +262,26 @@ func (h *Hub) GetOnlineUsersInRoom(roomID uint) []uint {
 
 // HandleClientMessage 클라이언트 메시지 처리
 func (h *Hub) HandleClientMessage(client *Client, message []byte) {
+	// Rate limiting 체크
+	client.rateMu.Lock()
+	now := time.Now()
+	if now.Sub(client.lastResetTime) >= time.Second {
+		// 1초가 지났으면 카운터 리셋
+		client.messageCount = 0
+		client.lastResetTime = now
+	}
+	client.messageCount++
+	count := client.messageCount
+	client.rateMu.Unlock()
+
+	if count > maxMessagesPerSecond {
+		logger.Warn("Rate limit exceeded", map[string]interface{}{
+			"user_id": client.UserID,
+			"count":   count,
+		})
+		return
+	}
+
 	var msg ClientMessage
 	if err := json.Unmarshal(message, &msg); err != nil {
 		logger.Warn("Failed to parse client message", map[string]interface{}{

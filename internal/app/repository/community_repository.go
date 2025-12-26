@@ -35,6 +35,10 @@ type CommunityRepository interface {
 
 	// QnA operations
 	AcceptAnswer(postID, commentID uint) error
+
+	// Store post management
+	UpdatePostPin(postID uint, isPinned bool) error
+	GetPostsWithImages(storeID uint, limit, offset int) ([]model.CommunityPost, int64, error)
 }
 
 type communityRepository struct {
@@ -470,4 +474,41 @@ func (r *communityRepository) AcceptAnswer(postID, commentID uint) error {
 
 		return nil
 	})
+}
+
+// UpdatePostPin 게시글 고정/해제
+func (r *communityRepository) UpdatePostPin(postID uint, isPinned bool) error {
+	return r.db.Model(&model.CommunityPost{}).
+		Where("id = ?", postID).
+		Update("is_pinned", isPinned).
+		Error
+}
+
+// GetPostsWithImages 이미지가 있는 매장 게시글 조회
+func (r *communityRepository) GetPostsWithImages(storeID uint, limit, offset int) ([]model.CommunityPost, int64, error) {
+	var posts []model.CommunityPost
+	var total int64
+
+	query := r.db.Model(&model.CommunityPost{}).
+		Where("store_id = ?", storeID).
+		Where("status = ?", model.StatusActive).
+		Where("array_length(image_urls, 1) > 0") // 이미지가 있는 게시글만
+
+	// 전체 개수 조회
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// 게시글 조회
+	if err := query.
+		Preload("User").
+		Preload("Store").
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&posts).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return posts, total, nil
 }

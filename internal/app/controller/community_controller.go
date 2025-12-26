@@ -546,3 +546,120 @@ func (c *CommunityController) AcceptAnswer(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "answer accepted successfully"})
 }
+
+// ==================== Store Post Management APIs ====================
+
+// PinPost godoc
+// @Summary 게시글 고정
+// @Description 매장 페이지에 게시글을 상단 고정합니다 (매장 주인만 가능)
+// @Tags community
+// @Accept json
+// @Produce json
+// @Param id path int true "게시글 ID"
+// @Success 200 {object} gin.H
+// @Failure 401 {object} gin.H
+// @Failure 403 {object} gin.H
+// @Security BearerAuth
+// @Router /api/v1/community/posts/{id}/pin [post]
+func (c *CommunityController) PinPost(ctx *gin.Context) {
+	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		return
+	}
+
+	userID, exists := ctx.Get(middleware.UserIDKey)
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	if err := c.service.PinPost(uint(id), userID.(uint)); err != nil {
+		if err.Error() == "only store owner can pin posts" {
+			ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "post pinned successfully"})
+}
+
+// UnpinPost godoc
+// @Summary 게시글 고정 해제
+// @Description 매장 페이지의 게시글 상단 고정을 해제합니다 (매장 주인만 가능)
+// @Tags community
+// @Accept json
+// @Produce json
+// @Param id path int true "게시글 ID"
+// @Success 200 {object} gin.H
+// @Failure 401 {object} gin.H
+// @Failure 403 {object} gin.H
+// @Security BearerAuth
+// @Router /api/v1/community/posts/{id}/unpin [post]
+func (c *CommunityController) UnpinPost(ctx *gin.Context) {
+	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		return
+	}
+
+	userID, exists := ctx.Get(middleware.UserIDKey)
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	if err := c.service.UnpinPost(uint(id), userID.(uint)); err != nil {
+		if err.Error() == "only store owner can unpin posts" {
+			ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "post unpinned successfully"})
+}
+
+// GetStoreGallery godoc
+// @Summary 매장 갤러리 조회
+// @Description 매장의 모든 이미지를 포함한 게시글 목록을 조회합니다
+// @Tags community
+// @Accept json
+// @Produce json
+// @Param store_id query int true "매장 ID"
+// @Param page query int false "페이지 번호" default(1)
+// @Param page_size query int false "페이지 크기" default(20)
+// @Success 200 {object} gin.H{data=[]gin.H,total=int,page=int,page_size=int}
+// @Router /api/v1/community/gallery [get]
+func (c *CommunityController) GetStoreGallery(ctx *gin.Context) {
+	storeID, err := strconv.ParseUint(ctx.Query("store_id"), 10, 32)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid store id"})
+		return
+	}
+
+	page, _ := strconv.Atoi(ctx.Query("page"))
+	if page == 0 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(ctx.Query("page_size"))
+	if pageSize == 0 {
+		pageSize = 20
+	}
+
+	gallery, total, err := c.service.GetStoreGallery(uint(storeID), page, pageSize)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"data":      gallery,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}

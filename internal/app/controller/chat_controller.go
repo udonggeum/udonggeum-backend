@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -16,8 +17,15 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		// CORS 설정에 따라 조정
-		return true
+		origin := r.Header.Get("Origin")
+		// 허용된 도메인 목록
+		allowedOrigins := map[string]bool{
+			"https://udg.co.kr":           true,
+			"http://localhost:5173":       true,  // 개발 환경
+			"http://localhost:3000":       true,  // 개발 환경
+			"http://43.200.249.22:5173":   true,  // 개발 서버
+		}
+		return allowedOrigins[origin]
 	},
 }
 
@@ -332,11 +340,12 @@ func (ctrl *ChatController) WebSocketHandler(c *gin.Context) {
 	}
 
 	client := &ws.Client{
-		Hub:       ctrl.hub,
-		Conn:      &ws.Conn{Conn: conn},
-		UserID:    userID,
-		Send:      make(chan []byte, 256),
-		ChatRooms: make(map[uint]bool),
+		Hub:           ctrl.hub,
+		Conn:          &ws.Conn{Conn: conn},
+		UserID:        userID,
+		Send:          make(chan []byte, 256),
+		ChatRooms:     make(map[uint]bool),
+		LastResetTime: time.Now(),
 	}
 
 	ctrl.hub.Register(client)

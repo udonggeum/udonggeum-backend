@@ -76,6 +76,9 @@ type CommunityPost struct {
 	IsAnswered   bool  `gorm:"default:false" json:"is_answered"`              // 답변 완료 여부
 	AcceptedAnswerID *uint `gorm:"index" json:"accepted_answer_id,omitempty"` // 채택된 답변 ID
 
+	// 매장 게시글 관리
+	IsPinned bool `gorm:"default:false;index" json:"is_pinned"` // 매장 페이지 상단 고정 여부
+
 	// 통계
 	ViewCount    int `gorm:"default:0" json:"view_count"`    // 조회수
 	LikeCount    int `gorm:"default:0" json:"like_count"`    // 좋아요 수
