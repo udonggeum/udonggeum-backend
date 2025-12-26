@@ -97,10 +97,7 @@ func (r *chatRepository) GetUserChatRooms(userID uint, limit, offset int) ([]mod
 	var total int64
 
 	query := r.db.Model(&model.ChatRoom{}).
-		Where(
-			r.db.Where("user1_id = ? AND user1_left_at IS NULL", userID).
-				Or("user2_id = ? AND user2_left_at IS NULL", userID),
-		).
+		Where("(user1_id = ? AND user1_left_at IS NULL) OR (user2_id = ? AND user2_left_at IS NULL)", userID, userID).
 		Preload("User1").
 		Preload("User2")
 

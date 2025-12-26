@@ -49,8 +49,28 @@ func (s *chatService) CreateOrGetChatRoom(user1ID, user2ID uint, roomType model.
 	}
 
 	if existingRoom != nil {
-		// 기존 채팅방이 있으면 반환
-		return existingRoom, false, nil
+		// 기존 채팅방이 있으면, 사용자가 나간 상태인지 확인하고 다시 참여 처리
+		if (existingRoom.User1ID == user1ID && existingRoom.User1LeftAt != nil) ||
+			(existingRoom.User2ID == user1ID && existingRoom.User2LeftAt != nil) {
+			// 나간 상태였다면 다시 참여 처리
+			if err := s.repo.RejoinChatRoom(existingRoom.ID, user1ID); err != nil {
+				return nil, false, err
+			}
+		}
+		if (existingRoom.User1ID == user2ID && existingRoom.User1LeftAt != nil) ||
+			(existingRoom.User2ID == user2ID && existingRoom.User2LeftAt != nil) {
+			// 나간 상태였다면 다시 참여 처리
+			if err := s.repo.RejoinChatRoom(existingRoom.ID, user2ID); err != nil {
+				return nil, false, err
+			}
+		}
+
+		// 업데이트된 채팅방 정보를 다시 조회하여 반환
+		updatedRoom, err := s.repo.GetChatRoomByIDWithUsers(existingRoom.ID)
+		if err != nil {
+			return nil, false, err
+		}
+		return updatedRoom, false, nil
 	}
 
 	// 새 채팅방 생성
@@ -225,6 +245,11 @@ func (s *chatService) GetChatRoomMessages(roomID, userID uint, page, pageSize in
 func (s *chatService) JoinChatRoom(userID, roomID uint) error {
 	// 권한 검증
 	if _, err := s.GetChatRoom(roomID, userID); err != nil {
+		return err
+	}
+
+	// 나간 상태였다면 재입장 처리 (user_left_at을 null로 초기화)
+	if err := s.repo.RejoinChatRoom(roomID, userID); err != nil {
 		return err
 	}
 
