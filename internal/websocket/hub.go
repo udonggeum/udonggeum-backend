@@ -27,9 +27,9 @@ type Client struct {
 	Send          chan []byte
 	ChatRooms     map[uint]bool // 현재 참여 중인 채팅방 IDs
 	mu            sync.RWMutex
-	messageCount  int       // 최근 1초간 받은 메시지 수
-	lastResetTime time.Time // 마지막 카운터 리셋 시간
-	rateMu        sync.Mutex
+	MessageCount  int       // 최근 1초간 받은 메시지 수
+	LastResetTime time.Time // 마지막 카운터 리셋 시간
+	RateMu        sync.Mutex
 }
 
 // Hub WebSocket 연결 관리자
@@ -263,16 +263,16 @@ func (h *Hub) GetOnlineUsersInRoom(roomID uint) []uint {
 // HandleClientMessage 클라이언트 메시지 처리
 func (h *Hub) HandleClientMessage(client *Client, message []byte) {
 	// Rate limiting 체크
-	client.rateMu.Lock()
+	client.RateMu.Lock()
 	now := time.Now()
-	if now.Sub(client.lastResetTime) >= time.Second {
+	if now.Sub(client.LastResetTime) >= time.Second {
 		// 1초가 지났으면 카운터 리셋
-		client.messageCount = 0
-		client.lastResetTime = now
+		client.MessageCount = 0
+		client.LastResetTime = now
 	}
-	client.messageCount++
-	count := client.messageCount
-	client.rateMu.Unlock()
+	client.MessageCount++
+	count := client.MessageCount
+	client.RateMu.Unlock()
 
 	if count > maxMessagesPerSecond {
 		logger.Warn("Rate limit exceeded", map[string]interface{}{

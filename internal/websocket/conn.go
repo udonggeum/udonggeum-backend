@@ -19,9 +19,6 @@ const (
 
 	// Maximum message size allowed from peer.
 	maxMessageSize = 100 * 1024 // 100KB (기존 512KB에서 축소)
-
-	// Rate limiting: 최대 메시지 수 (1초당)
-	maxMessagesPerSecond = 10
 )
 
 // Conn WebSocket 연결 래퍼
