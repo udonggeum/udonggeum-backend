@@ -98,6 +98,7 @@ func main() {
 	communityService := service.NewCommunityService(communityRepo, userRepo)
 	reviewService := service.NewReviewService(reviewRepo, storeRepo)
 	tagService := service.NewTagService(dbConn)
+	aiService := service.NewAIService(cfg)
 
 	// Initialize WebSocket hub
 	hub := websocket.NewHub()
@@ -117,7 +118,7 @@ func main() {
 	authController := controller.NewAuthController(authService, passwordResetService)
 	storeController := controller.NewStoreController(storeService)
 	goldPriceController := controller.NewGoldPriceController(goldPriceService)
-	communityController := controller.NewCommunityController(communityService)
+	communityController := controller.NewCommunityController(communityService, aiService)
 	reviewController := controller.NewReviewController(reviewService)
 	uploadController := controller.NewUploadController(s3Storage)
 	tagController := controller.NewTagController(tagService)

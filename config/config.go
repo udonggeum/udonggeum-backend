@@ -19,6 +19,7 @@ type Config struct {
 	S3        S3Config
 	GoldPrice GoldPriceConfig
 	Kakao     KakaoConfig
+	OpenAI    OpenAIConfig
 }
 
 type ServerConfig struct {
@@ -85,6 +86,11 @@ type KakaoConfig struct {
 	RedirectURI  string
 }
 
+type OpenAIConfig struct {
+	APIKey string
+	Model  string
+}
+
 func Load() (*Config, error) {
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
@@ -144,6 +150,10 @@ func Load() (*Config, error) {
 			ClientID:     getEnv("KAKAO_CLIENT_ID", ""),
 			ClientSecret: getEnv("KAKAO_CLIENT_SECRET", ""),
 			RedirectURI:  getEnv("KAKAO_REDIRECT_URI", "http://localhost:8080/api/v1/auth/kakao/callback"),
+		},
+		OpenAI: OpenAIConfig{
+			APIKey: getEnv("OPENAI_API_KEY", ""),
+			Model:  getEnv("OPENAI_MODEL", "gpt-4o-mini"),
 		},
 	}
 

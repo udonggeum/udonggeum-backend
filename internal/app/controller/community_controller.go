@@ -12,12 +12,16 @@ import (
 
 // CommunityController 커뮤니티 컨트롤러
 type CommunityController struct {
-	service service.CommunityService
+	service   service.CommunityService
+	aiService service.AIService
 }
 
 // NewCommunityController 커뮤니티 컨트롤러 생성자
-func NewCommunityController(service service.CommunityService) *CommunityController {
-	return &CommunityController{service: service}
+func NewCommunityController(service service.CommunityService, aiService service.AIService) *CommunityController {
+	return &CommunityController{
+		service:   service,
+		aiService: aiService,
+	}
 }
 
 // ==================== Post APIs ====================
@@ -661,5 +665,43 @@ func (c *CommunityController) GetStoreGallery(ctx *gin.Context) {
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
+	})
+}
+
+// GenerateContent godoc
+// @Summary AI 컨텐츠 생성
+// @Description OpenAI를 사용하여 게시글 내용을 자동 생성합니다
+// @Tags community
+// @Accept json
+// @Produce json
+// @Param request body model.GenerateContentRequest true "컨텐츠 생성 요청"
+// @Success 200 {object} model.GenerateContentResponse
+// @Failure 400 {object} gin.H
+// @Failure 401 {object} gin.H
+// @Security BearerAuth
+// @Router /api/v1/community/generate-content [post]
+func (c *CommunityController) GenerateContent(ctx *gin.Context) {
+	var req model.GenerateContentRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 인증 확인 (로그인한 사용자만 사용 가능)
+	_, exists := ctx.Get(middleware.UserIDKey)
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	// AI 서비스 호출
+	content, err := c.aiService.GenerateContent(&req)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, model.GenerateContentResponse{
+		Content: content,
 	})
 }

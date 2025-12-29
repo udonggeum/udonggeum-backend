@@ -231,6 +231,12 @@ func (r *Router) Setup() *gin.Engine {
 		// Community (금광산) routes
 		community := v1.Group("/community")
 		{
+			// AI Content Generation
+			community.POST("/generate-content",
+				r.authMiddleware.Authenticate(),
+				r.communityController.GenerateContent,
+			)
+
 			// Post routes
 			posts := community.Group("/posts")
 			{

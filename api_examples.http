@@ -260,3 +260,211 @@ Content-Type: application/json
 {
   "status": "completed"
 }
+
+### ============================================
+### Community Posts (커뮤니티 게시글)
+### ============================================
+
+### 게시글 목록 조회
+GET {{apiUrl}}/community/posts?category=gold_trade&page=1&page_size=20
+Authorization: Bearer {{accessToken}}
+
+### 게시글 상세 조회
+GET {{apiUrl}}/community/posts/1
+Authorization: Bearer {{accessToken}}
+
+### 게시글 작성 (이미지 없이)
+POST {{apiUrl}}/community/posts
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "24K 금반지 판매합니다",
+  "content": "24K 금반지를 판매합니다. 중량 10g, 상태 좋습니다.",
+  "category": "gold_trade",
+  "type": "sell_gold",
+  "gold_type": "24K",
+  "weight": 10.0,
+  "price": 800000,
+  "location": "서울 강남구"
+}
+
+### ============================================
+### 게시글 작성 (이미지 포함) - 전체 플로우
+### ============================================
+
+### Step 1: Presigned URL 생성 (첫 번째 이미지)
+POST {{apiUrl}}/upload/presigned-url
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "filename": "gold-ring-1.jpg",
+  "content_type": "image/jpeg",
+  "file_size": 524288,
+  "folder": "community"
+}
+
+# 응답 예시:
+# {
+#   "upload_url": "https://s3.ap-northeast-2.amazonaws.com/...",
+#   "file_url": "https://cdn.udonggeum.com/community/uuid-1.jpg",
+#   "key": "community/uuid-1.jpg"
+# }
+
+### Step 2: Presigned URL 생성 (두 번째 이미지)
+POST {{apiUrl}}/upload/presigned-url
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "filename": "gold-ring-2.jpg",
+  "content_type": "image/jpeg",
+  "file_size": 612352,
+  "folder": "community"
+}
+
+### Step 3: S3에 직접 업로드 (클라이언트)
+# 위에서 받은 upload_url을 사용하여 클라이언트에서 직접 S3에 업로드
+# PUT {{upload_url}}
+# Content-Type: image/jpeg
+# Body: [파일 바이너리 데이터]
+
+### Step 4: 게시글 작성 (이미지 URL 포함)
+POST {{apiUrl}}/community/posts
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "24K 금반지 판매합니다",
+  "content": "24K 금반지를 판매합니다. 중량 10g, 상태 좋습니다. 사진을 참고해주세요.",
+  "category": "gold_trade",
+  "type": "sell_gold",
+  "gold_type": "24K",
+  "weight": 10.0,
+  "price": 800000,
+  "location": "서울 강남구",
+  "image_urls": [
+    "https://cdn.udonggeum.com/community/uuid-1.jpg",
+    "https://cdn.udonggeum.com/community/uuid-2.jpg"
+  ]
+}
+
+### 게시글 수정 (이미지 URL 변경)
+PUT {{apiUrl}}/community/posts/1
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "24K 금반지 판매합니다 (가격 인하)",
+  "content": "24K 금반지를 판매합니다. 빠른 판매 원합니다!",
+  "price": 750000,
+  "image_urls": [
+    "https://cdn.udonggeum.com/community/uuid-1.jpg",
+    "https://cdn.udonggeum.com/community/uuid-2.jpg",
+    "https://cdn.udonggeum.com/community/uuid-3.jpg"
+  ]
+}
+
+### 게시글 삭제
+DELETE {{apiUrl}}/community/posts/1
+Authorization: Bearer {{accessToken}}
+
+### ============================================
+### 금은방 사장님 게시글 (매장 연결)
+### ============================================
+
+### 금 매입 홍보글 작성 (이미지 포함)
+POST {{apiUrl}}/community/posts
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "강남 금은방 - 고가 매입 진행중",
+  "content": "24K/18K/14K 모든 금 제품 고가 매입합니다. 방문 상담 환영합니다!",
+  "category": "gold_trade",
+  "type": "buy_gold",
+  "location": "서울 강남구",
+  "image_urls": [
+    "https://cdn.udonggeum.com/community/store-front.jpg"
+  ]
+}
+
+### 매장 소식 작성 (이미지 포함)
+POST {{apiUrl}}/community/posts
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "신상품 입고 안내",
+  "content": "새로운 디자인의 금반지와 목걸이가 입고되었습니다!",
+  "category": "gold_news",
+  "type": "store_news",
+  "image_urls": [
+    "https://cdn.udonggeum.com/community/new-product-1.jpg",
+    "https://cdn.udonggeum.com/community/new-product-2.jpg",
+    "https://cdn.udonggeum.com/community/new-product-3.jpg"
+  ]
+}
+
+### ============================================
+### 댓글
+### ============================================
+
+### 댓글 목록 조회
+GET {{apiUrl}}/community/comments?post_id=1&page=1&page_size=50
+Authorization: Bearer {{accessToken}}
+
+### 댓글 작성
+POST {{apiUrl}}/community/comments
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "post_id": 1,
+  "content": "가격 협의 가능할까요?"
+}
+
+### 대댓글 작성
+POST {{apiUrl}}/community/comments
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "post_id": 1,
+  "parent_id": 1,
+  "content": "네, 직접 만나서 협의 가능합니다!"
+}
+
+### 댓글 수정
+PUT {{apiUrl}}/community/comments/1
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "content": "가격 협의 가능할까요? 연락 부탁드립니다."
+}
+
+### 댓글 삭제
+DELETE {{apiUrl}}/community/comments/1
+Authorization: Bearer {{accessToken}}
+
+### ============================================
+### 좋아요
+### ============================================
+
+### 게시글 좋아요 토글
+POST {{apiUrl}}/community/posts/1/like
+Authorization: Bearer {{accessToken}}
+
+### 댓글 좋아요 토글
+POST {{apiUrl}}/community/comments/1/like
+Authorization: Bearer {{accessToken}}
+
+### ============================================
+### 매장 갤러리
+### ============================================
+
+### 매장 갤러리 조회 (매장의 모든 이미지가 있는 게시글)
+GET {{apiUrl}}/community/gallery?store_id=1&page=1&page_size=20
+Authorization: Bearer {{accessToken}}

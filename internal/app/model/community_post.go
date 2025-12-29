@@ -157,3 +157,20 @@ type PostListQuery struct {
 	SortBy    string        `form:"sort_by" binding:"omitempty,oneof=created_at view_count like_count comment_count"`
 	SortOrder string        `form:"sort_order" binding:"omitempty,oneof=asc desc"`
 }
+
+// GenerateContentRequest AI 컨텐츠 생성 요청
+type GenerateContentRequest struct {
+	Type     PostType `json:"type" binding:"required"`
+	Keywords []string `json:"keywords" binding:"required"`
+	Title    *string  `json:"title,omitempty"`
+	GoldType *string  `json:"gold_type,omitempty"`
+	Weight   *float64 `json:"weight,omitempty"`
+	Price    *int64   `json:"price,omitempty"`
+	Location *string  `json:"location,omitempty"`
+}
+
+// GenerateContentResponse AI 컨텐츠 생성 응답
+type GenerateContentResponse struct {
+	Content     string `json:"content"`
+	GeneratedAt string `json:"generated_at,omitempty"`
+}
