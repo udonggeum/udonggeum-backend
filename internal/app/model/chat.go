@@ -28,7 +28,9 @@ type ChatRoom struct {
 
 	// 관련 리소스 (둘 중 하나만 존재)
 	ProductID *uint          `gorm:"index" json:"product_id,omitempty"` // 판매글 ID (SALE 타입)
+	Product   *CommunityPost `gorm:"foreignKey:ProductID" json:"product,omitempty"` // 판매글 정보
 	StoreID   *uint          `gorm:"index" json:"store_id,omitempty"`   // 매장 ID (STORE 타입)
+	Store     *Store         `gorm:"foreignKey:StoreID" json:"store,omitempty"` // 매장 정보
 
 	// 마지막 메시지 정보 (채팅방 목록에서 활용)
 	LastMessageID      *uint      `json:"last_message_id,omitempty"`

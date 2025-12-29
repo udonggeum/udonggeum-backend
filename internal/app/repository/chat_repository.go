@@ -57,7 +57,14 @@ func (r *chatRepository) GetChatRoomByID(id uint) (*model.ChatRoom, error) {
 // GetChatRoomByIDWithUsers 채팅방 ID로 조회 (사용자 정보 포함)
 func (r *chatRepository) GetChatRoomByIDWithUsers(id uint) (*model.ChatRoom, error) {
 	var room model.ChatRoom
-	if err := r.db.Preload("User1").Preload("User2").First(&room, id).Error; err != nil {
+	if err := r.db.
+		Preload("User1").
+		Preload("User1.Store").
+		Preload("User2").
+		Preload("User2.Store").
+		Preload("Product").
+		Preload("Store").
+		First(&room, id).Error; err != nil {
 		return nil, err
 	}
 	return &room, nil
@@ -99,7 +106,11 @@ func (r *chatRepository) GetUserChatRooms(userID uint, limit, offset int) ([]mod
 	query := r.db.Model(&model.ChatRoom{}).
 		Where("(user1_id = ? AND user1_left_at IS NULL) OR (user2_id = ? AND user2_left_at IS NULL)", userID, userID).
 		Preload("User1").
-		Preload("User2")
+		Preload("User1.Store").
+		Preload("User2").
+		Preload("User2.Store").
+		Preload("Product").
+		Preload("Store")
 
 	// 총 개수
 	if err := query.Count(&total).Error; err != nil {
