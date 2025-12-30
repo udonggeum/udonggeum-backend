@@ -292,6 +292,31 @@ func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address,
 	if address != user.Address {
 		user.Address = address
 		updated = true
+
+		// Geocode the address to get latitude and longitude
+		if address != "" {
+			lat, lng, err := util.GeocodeAddress(address)
+			if err != nil {
+				logger.Warn("Failed to geocode address, continuing without coordinates", map[string]interface{}{
+					"address": address,
+					"error":   err.Error(),
+				})
+				// Don't fail the update if geocoding fails
+				// User can still use the service, just without location-based features
+			} else {
+				user.Latitude = lat
+				user.Longitude = lng
+				logger.Info("Successfully geocoded address", map[string]interface{}{
+					"address":   address,
+					"latitude":  lat,
+					"longitude": lng,
+				})
+			}
+		} else {
+			// Clear coordinates if address is cleared
+			user.Latitude = nil
+			user.Longitude = nil
+		}
 	}
 	// ProfileImage can be empty (to clear it) or update to new URL
 	if profileImage != user.ProfileImage {

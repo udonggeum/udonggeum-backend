@@ -2,10 +2,12 @@ package service
 
 import (
 	"errors"
+	"sort"
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/repository"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
+	"github.com/ikkim/udonggeum-backend/pkg/util"
 	"gorm.io/gorm"
 )
 
@@ -19,7 +21,9 @@ type StoreListOptions struct {
 	District        string
 	Search          string
 	IncludeProducts bool
-	BuyingGold      bool // 금 매입 가능 매장만 조회
+	BuyingGold      bool     // 금 매입 가능 매장만 조회
+	UserLat         *float64 // 사용자 위도 (거리순 정렬용)
+	UserLng         *float64 // 사용자 경도 (거리순 정렬용)
 }
 
 type StoreLocationSummary struct {
@@ -73,6 +77,8 @@ func (s *storeService) ListStores(opts StoreListOptions) ([]model.Store, error) 
 	logger.Debug("Listing stores", map[string]interface{}{
 		"region":   opts.Region,
 		"district": opts.District,
+		"user_lat": opts.UserLat,
+		"user_lng": opts.UserLng,
 	})
 
 	stores, err := s.storeRepo.FindAll(repository.StoreFilter{
@@ -85,6 +91,51 @@ func (s *storeService) ListStores(opts StoreListOptions) ([]model.Store, error) 
 	if err != nil {
 		logger.Error("Failed to list stores", err)
 		return nil, err
+	}
+
+	// If user location provided, sort by distance
+	if opts.UserLat != nil && opts.UserLng != nil {
+		type storeWithDistance struct {
+			store    model.Store
+			distance float64
+		}
+
+		storesWithDistance := make([]storeWithDistance, 0, len(stores))
+
+		for _, store := range stores {
+			// Calculate distance if store has coordinates
+			distance := 999999.0 // Default large distance for stores without coordinates
+			if store.Latitude != nil && store.Longitude != nil {
+				distance = util.CalculateDistance(
+					*opts.UserLat, *opts.UserLng,
+					*store.Latitude, *store.Longitude,
+				)
+			}
+
+			storesWithDistance = append(storesWithDistance, storeWithDistance{
+				store:    store,
+				distance: distance,
+			})
+		}
+
+		// Sort by distance
+		sort.Slice(storesWithDistance, func(i, j int) bool {
+			return storesWithDistance[i].distance < storesWithDistance[j].distance
+		})
+
+		// Extract sorted stores
+		sortedStores := make([]model.Store, len(storesWithDistance))
+		for i, swd := range storesWithDistance {
+			sortedStores[i] = swd.store
+		}
+
+		logger.Info("Stores fetched and sorted by distance", map[string]interface{}{
+			"count":    len(sortedStores),
+			"user_lat": *opts.UserLat,
+			"user_lng": *opts.UserLng,
+		})
+
+		return sortedStores, nil
 	}
 
 	logger.Info("Stores fetched", map[string]interface{}{

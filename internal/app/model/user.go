@@ -22,6 +22,8 @@ type User struct {
 	Phone        string         `json:"phone"`                                       // 전화번호 (숫자만, 예: 01012345678)
 	ProfileImage string         `json:"profile_image"`                               // 프로필 이미지 URL
 	Address      string         `json:"address"`                                     // 주소
+	Latitude     *float64       `json:"latitude"`                                    // 위도 (주소 기반)
+	Longitude    *float64       `json:"longitude"`                                   // 경도 (주소 기반)
 	Role         UserRole       `gorm:"type:varchar(20);default:'user'" json:"role"` // 권한
 	StoreID      *uint          `gorm:"index" json:"store_id,omitempty"`             // 대표 매장 ID (사장님용)
 	CreatedAt    time.Time      `json:"created_at"`                                  // 생성 시각

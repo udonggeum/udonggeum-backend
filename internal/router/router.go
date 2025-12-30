@@ -133,6 +133,16 @@ func (r *Router) Setup() *gin.Engine {
 				r.authMiddleware.Authenticate(),
 				r.storeController.GetUserLikedStores,
 			)
+			users.GET("/me/store",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.storeController.GetMyStore,
+			)
+			users.PUT("/me/store",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.storeController.UpdateMyStore,
+			)
 		}
 
 		// Reviews routes

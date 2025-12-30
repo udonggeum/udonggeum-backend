@@ -39,12 +39,28 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 
 	includeProducts := strings.EqualFold(c.DefaultQuery("include_products", "false"), "true")
 	buyingGold := strings.EqualFold(c.DefaultQuery("buying", "false"), "true")
+
+	// Parse user location if provided
+	var userLat, userLng *float64
+	if latStr := c.Query("user_lat"); latStr != "" {
+		if lat, err := strconv.ParseFloat(latStr, 64); err == nil {
+			userLat = &lat
+		}
+	}
+	if lngStr := c.Query("user_lng"); lngStr != "" {
+		if lng, err := strconv.ParseFloat(lngStr, 64); err == nil {
+			userLng = &lng
+		}
+	}
+
 	opts := service.StoreListOptions{
 		Region:          c.Query("region"),
 		District:        c.Query("district"),
 		Search:          c.Query("search"),
 		IncludeProducts: includeProducts,
 		BuyingGold:      buyingGold,
+		UserLat:         userLat,
+		UserLng:         userLng,
 	}
 
 	stores, err := ctrl.storeService.ListStores(opts)
@@ -509,5 +525,155 @@ func (ctrl *StoreController) GetUserLikedStores(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"stores": stores,
 		"count":  len(stores),
+	})
+}
+
+// GetMyStore admin 사용자의 매장 정보 조회
+func (ctrl *StoreController) GetMyStore(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		log.Warn("User ID not found in context for my store", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Unauthorized",
+		})
+		return
+	}
+
+	stores, err := ctrl.storeService.GetStoresByUserID(userID)
+	if err != nil {
+		log.Error("Failed to get my store", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to get my store",
+		})
+		return
+	}
+
+	// admin 사용자는 하나의 매장만 가질 수 있음
+	if len(stores) == 0 {
+		log.Warn("No store found for admin user", map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Store not found",
+		})
+		return
+	}
+
+	log.Info("My store retrieved", map[string]interface{}{
+		"user_id":  userID,
+		"store_id": stores[0].ID,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"store": stores[0],
+	})
+}
+
+// UpdateMyStore admin 사용자의 매장 정보 수정
+func (ctrl *StoreController) UpdateMyStore(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		log.Warn("User ID not found in context for my store update", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Unauthorized",
+		})
+		return
+	}
+
+	// 사용자의 매장 찾기
+	stores, err := ctrl.storeService.GetStoresByUserID(userID)
+	if err != nil {
+		log.Error("Failed to get my store for update", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to get my store",
+		})
+		return
+	}
+
+	if len(stores) == 0 {
+		log.Warn("No store found for admin user update", map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Store not found",
+		})
+		return
+	}
+
+	storeID := stores[0].ID
+
+	var req StoreRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid my store update request", map[string]interface{}{
+			"store_id": storeID,
+			"error":    err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	updated, err := ctrl.storeService.UpdateStore(userID, storeID, service.StoreMutation{
+		Name:        req.Name,
+		Region:      req.Region,
+		District:    req.District,
+		Address:     req.Address,
+		Latitude:    req.Latitude,
+		Longitude:   req.Longitude,
+		PhoneNumber: req.PhoneNumber,
+		ImageURL:    req.ImageURL,
+		Description: req.Description,
+		OpenTime:    req.OpenTime,
+		CloseTime:   req.CloseTime,
+		TagIDs:      req.TagIDs,
+	})
+	if err != nil {
+		switch err {
+		case service.ErrStoreNotFound:
+			log.Warn("Cannot update my store: not found", map[string]interface{}{
+				"store_id": storeID,
+			})
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "Store not found",
+			})
+			return
+		case service.ErrStoreAccessDenied:
+			log.Warn("My store update forbidden", map[string]interface{}{
+				"store_id": storeID,
+				"user_id":  userID,
+			})
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "Insufficient permissions",
+			})
+			return
+		default:
+			log.Error("Failed to update my store", err, map[string]interface{}{
+				"store_id": storeID,
+			})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to update store",
+			})
+			return
+		}
+	}
+
+	log.Info("My store updated", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Store updated successfully",
+		"store":   updated,
 	})
 }
