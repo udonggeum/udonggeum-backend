@@ -192,6 +192,26 @@ func (s *storeService) CreateStore(store *model.Store) (*model.Store, error) {
 		"user_id": store.UserID,
 	})
 
+	// Geocode address to get coordinates if address is provided
+	if store.Address != "" && (store.Latitude == nil || store.Longitude == nil) {
+		lat, lng, err := util.GeocodeAddress(store.Address)
+		if err != nil {
+			logger.Warn("Failed to geocode store address during creation", map[string]interface{}{
+				"address": store.Address,
+				"error":   err.Error(),
+			})
+			// Continue without coordinates if geocoding fails
+		} else {
+			store.Latitude = lat
+			store.Longitude = lng
+			logger.Info("Successfully geocoded store address during creation", map[string]interface{}{
+				"address":   store.Address,
+				"latitude":  lat,
+				"longitude": lng,
+			})
+		}
+	}
+
 	if err := s.storeRepo.Create(store); err != nil {
 		logger.Error("Failed to create store", err, map[string]interface{}{
 			"name":    store.Name,
@@ -260,9 +280,47 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 	existing.Name = input.Name
 	existing.Region = input.Region
 	existing.District = input.District
+
+	// Address handling with geocoding
+	addressChanged := existing.Address != input.Address
 	existing.Address = input.Address
-	existing.Latitude = input.Latitude
-	existing.Longitude = input.Longitude
+
+	// If address changed, geocode it to get new coordinates
+	if addressChanged && input.Address != "" {
+		lat, lng, err := util.GeocodeAddress(input.Address)
+		if err != nil {
+			logger.Warn("Failed to geocode store address, using provided coordinates", map[string]interface{}{
+				"store_id": storeID,
+				"address":  input.Address,
+				"error":    err.Error(),
+			})
+			// Fall back to provided coordinates if geocoding fails
+			existing.Latitude = input.Latitude
+			existing.Longitude = input.Longitude
+		} else {
+			existing.Latitude = lat
+			existing.Longitude = lng
+			logger.Info("Successfully geocoded store address", map[string]interface{}{
+				"store_id":  storeID,
+				"address":   input.Address,
+				"latitude":  lat,
+				"longitude": lng,
+			})
+		}
+	} else if !addressChanged {
+		// If address didn't change, keep existing coordinates or use provided ones
+		if input.Latitude != nil {
+			existing.Latitude = input.Latitude
+		}
+		if input.Longitude != nil {
+			existing.Longitude = input.Longitude
+		}
+	} else {
+		// Address cleared
+		existing.Latitude = nil
+		existing.Longitude = nil
+	}
+
 	existing.PhoneNumber = input.PhoneNumber
 	existing.ImageURL = input.ImageURL
 	existing.Description = input.Description
