@@ -20,13 +20,16 @@ import (
 )
 
 var (
-	ErrEmailAlreadyExists    = errors.New("email already exists")
-	ErrInvalidCredentials    = errors.New("invalid email or password")
-	ErrUserNotFound          = errors.New("user not found")
-	ErrInvalidToken          = errors.New("invalid token")
-	ErrExpiredToken          = errors.New("token has expired")
-	ErrTokenRevoked          = errors.New("token has been revoked")
-	ErrNicknameAlreadyExists = errors.New("nickname already exists")
+	ErrEmailAlreadyExists       = errors.New("email already exists")
+	ErrInvalidCredentials       = errors.New("invalid email or password")
+	ErrUserNotFound             = errors.New("user not found")
+	ErrInvalidToken             = errors.New("invalid token")
+	ErrExpiredToken             = errors.New("token has expired")
+	ErrTokenRevoked             = errors.New("token has been revoked")
+	ErrNicknameAlreadyExists    = errors.New("nickname already exists")
+	ErrInvalidVerificationCode  = errors.New("invalid or expired verification code")
+	ErrEmailAlreadyVerified     = errors.New("email already verified")
+	ErrPhoneAlreadyVerified     = errors.New("phone already verified")
 )
 
 type AuthService interface {
@@ -39,6 +42,12 @@ type AuthService interface {
 	RevokeToken(refreshToken string) error
 	GetKakaoLoginURL() string
 	KakaoLogin(code string) (*model.User, *util.TokenPair, error)
+
+	// 이메일/휴대폰 인증
+	SendEmailVerification(email string) error
+	VerifyEmail(email, code string) error
+	SendPhoneVerification(userID uint, phone string) error
+	VerifyPhone(userID uint, phone, code string) error
 }
 
 type authService struct {
@@ -841,4 +850,114 @@ func (s *authService) getKakaoUserInfo(accessToken string) (*kakaoUserInfo, erro
 		"email": userInfo.KakaoAccount.Email,
 	})
 	return &userInfo, nil
+}
+
+// === 이메일/휴대폰 인증 메서드 ===
+
+// SendEmailVerification sends verification code to email
+func (s *authService) SendEmailVerification(email string) error {
+	// Generate verification code
+	code, err := util.GenerateVerificationCode()
+	if err != nil {
+		return fmt.Errorf("failed to generate verification code: %w", err)
+	}
+
+	// Store code
+	util.StoreEmailVerificationCode(email, code)
+
+	// Send email
+	err = util.SendVerificationEmail(email, code)
+	if err != nil {
+		return fmt.Errorf("failed to send verification email: %w", err)
+	}
+
+	return nil
+}
+
+// VerifyEmail verifies email with code
+func (s *authService) VerifyEmail(email, code string) error {
+	// Verify code
+	if !util.VerifyEmailCode(email, code) {
+		return ErrInvalidVerificationCode
+	}
+
+	// Find user by email
+	user, err := s.userRepo.FindByEmail(email)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 회원가입 전 이메일 인증인 경우 - 이메일만 검증하고 user 업데이트는 하지 않음
+			return nil
+		}
+		return fmt.Errorf("failed to find user: %w", err)
+	}
+
+	// Update user's email_verified status
+	now := time.Now()
+	user.EmailVerified = true
+	user.EmailVerifiedAt = &now
+
+	err = s.userRepo.Update(user)
+	if err != nil {
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+
+	return nil
+}
+
+// SendPhoneVerification sends verification code to phone
+func (s *authService) SendPhoneVerification(userID uint, phone string) error {
+	// Get user
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return fmt.Errorf("failed to find user: %w", err)
+	}
+
+	// Check if already verified
+	if user.PhoneVerified {
+		return ErrPhoneAlreadyVerified
+	}
+
+	// Generate verification code
+	code, err := util.GenerateVerificationCode()
+	if err != nil {
+		return fmt.Errorf("failed to generate verification code: %w", err)
+	}
+
+	// Store code
+	util.StorePhoneVerificationCode(phone, code)
+
+	// Send SMS
+	err = util.SendVerificationSMS(phone, code)
+	if err != nil {
+		return fmt.Errorf("failed to send verification SMS: %w", err)
+	}
+
+	return nil
+}
+
+// VerifyPhone verifies phone with code
+func (s *authService) VerifyPhone(userID uint, phone, code string) error {
+	// Verify code
+	if !util.VerifyPhoneCode(phone, code) {
+		return ErrInvalidVerificationCode
+	}
+
+	// Get user
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return fmt.Errorf("failed to find user: %w", err)
+	}
+
+	// Update user's phone and phone_verified status
+	now := time.Now()
+	user.Phone = phone
+	user.PhoneVerified = true
+	user.PhoneVerifiedAt = &now
+
+	err = s.userRepo.Update(user)
+	if err != nil {
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+
+	return nil
 }

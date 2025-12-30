@@ -79,6 +79,12 @@ func (r *Router) Setup() *gin.Engine {
 			// Kakao OAuth
 			auth.GET("/kakao/login", r.authController.GetKakaoLoginURL)
 			auth.GET("/kakao/callback", r.authController.KakaoCallback)
+
+			// 이메일/휴대폰 인증
+			auth.POST("/send-email-verification", r.authController.SendEmailVerification)
+			auth.POST("/verify-email", r.authController.VerifyEmail)
+			auth.POST("/send-phone-verification", r.authMiddleware.Authenticate(), r.authController.SendPhoneVerification)
+			auth.POST("/verify-phone", r.authMiddleware.Authenticate(), r.authController.VerifyPhone)
 		}
 
 		stores := v1.Group("/stores")

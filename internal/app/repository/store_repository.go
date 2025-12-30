@@ -160,7 +160,7 @@ func (r *storeRepository) FindByID(id uint, includeProducts bool) (*model.Store,
 		"store_id": id,
 	})
 
-	query := r.db.Model(&model.Store{}).Preload("Tags")
+	query := r.db.Model(&model.Store{}).Preload("Tags").Preload("BusinessRegistration")
 	if includeProducts {
 		query = query.Preload("Products", func(db *gorm.DB) *gorm.DB {
 			return db.Preload("Options")

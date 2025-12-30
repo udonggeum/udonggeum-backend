@@ -15,10 +15,14 @@ import (
 
 type StoreController struct {
 	storeService service.StoreService
+	authService  service.AuthService
 }
 
-func NewStoreController(storeService service.StoreService) *StoreController {
-	return &StoreController{storeService: storeService}
+func NewStoreController(storeService service.StoreService, authService service.AuthService) *StoreController {
+	return &StoreController{
+		storeService: storeService,
+		authService:  authService,
+	}
 }
 
 type StoreRequest struct {
@@ -39,6 +43,22 @@ type StoreRequest struct {
 	BusinessNumber        string `json:"business_number" binding:"required"`          // 사업자등록번호 (필수)
 	BusinessStartDate     string `json:"business_start_date" binding:"required"`      // 개업일자 (필수)
 	RepresentativeName    string `json:"representative_name" binding:"required"`      // 대표자명 (필수)
+}
+
+// UpdateStoreRequest 매장 정보 수정 요청 (사업자 정보는 수정 불가)
+type UpdateStoreRequest struct {
+	Name        string   `json:"name" binding:"required"`
+	Region      string   `json:"region"`
+	District    string   `json:"district"`
+	Address     string   `json:"address"`
+	Latitude    *float64 `json:"latitude"`
+	Longitude   *float64 `json:"longitude"`
+	PhoneNumber string   `json:"phone_number"`
+	ImageURL    string   `json:"image_url"`
+	Description string   `json:"description"`
+	OpenTime    string   `json:"open_time"`
+	CloseTime   string   `json:"close_time"`
+	TagIDs      []uint   `json:"tag_ids"` // 매장 태그 ID 배열
 }
 
 func (ctrl *StoreController) ListStores(c *gin.Context) {
@@ -215,6 +235,28 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		return
 	}
 
+	// 휴대폰 인증 확인
+	user, err := ctrl.authService.GetUserByID(userID)
+	if err != nil {
+		log.Error("Failed to get user", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to verify user",
+		})
+		return
+	}
+
+	if !user.PhoneVerified {
+		log.Warn("Phone not verified for store creation", map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "휴대폰 인증이 필요합니다. 마이페이지에서 휴대폰 인증을 완료해주세요.",
+		})
+		return
+	}
+
 	var req StoreRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Warn("Invalid store creation request", map[string]interface{}{
@@ -278,26 +320,29 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 	// 3. 사업자 인증 성공 - 매장 생성
 	now := time.Now()
 	store := &model.Store{
-		UserID:                userID,
-		Name:                  req.Name,
-		Region:                req.Region,
-		District:              req.District,
-		Address:               req.Address,
-		Latitude:              req.Latitude,
-		Longitude:             req.Longitude,
-		PhoneNumber:           req.PhoneNumber,
-		ImageURL:              req.ImageURL,
-		Description:           req.Description,
-		OpenTime:              req.OpenTime,
-		CloseTime:             req.CloseTime,
-		Tags:                  tags,
-		BusinessNumber:        req.BusinessNumber,
-		BusinessStartDate:     req.BusinessStartDate,
-		RepresentativeName:    req.RepresentativeName,
-		BusinessStatus:        verificationResult.BusinessStatus,
-		TaxType:               verificationResult.TaxType,
-		IsVerified:            true,
-		VerificationDate:      &now,
+		UserID:      userID,
+		Name:        req.Name,
+		Region:      req.Region,
+		District:    req.District,
+		Address:     req.Address,
+		Latitude:    req.Latitude,
+		Longitude:   req.Longitude,
+		PhoneNumber: req.PhoneNumber,
+		ImageURL:    req.ImageURL,
+		Description: req.Description,
+		OpenTime:    req.OpenTime,
+		CloseTime:   req.CloseTime,
+		Tags:        tags,
+		// 사업자 정보는 별도 테이블로 관리
+		BusinessRegistration: &model.BusinessRegistration{
+			BusinessNumber:     req.BusinessNumber,
+			BusinessStartDate:  req.BusinessStartDate,
+			RepresentativeName: req.RepresentativeName,
+			BusinessStatus:     verificationResult.BusinessStatus,
+			TaxType:            verificationResult.TaxType,
+			IsVerified:         true,
+			VerificationDate:   &now,
+		},
 	}
 
 	created, err := ctrl.storeService.CreateStore(store)
@@ -326,7 +371,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 	log.Info("Store created successfully", map[string]interface{}{
 		"store_id": created.ID,
 		"user_id":  userID,
-		"verified": created.IsVerified,
+		"verified": true,
 	})
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -693,7 +738,7 @@ func (ctrl *StoreController) UpdateMyStore(c *gin.Context) {
 
 	storeID := stores[0].ID
 
-	var req StoreRequest
+	var req UpdateStoreRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Warn("Invalid my store update request", map[string]interface{}{
 			"store_id": storeID,

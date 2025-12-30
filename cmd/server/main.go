@@ -116,7 +116,7 @@ func main() {
 	)
 
 	authController := controller.NewAuthController(authService, passwordResetService)
-	storeController := controller.NewStoreController(storeService)
+	storeController := controller.NewStoreController(storeService, authService)
 	goldPriceController := controller.NewGoldPriceController(goldPriceService)
 	communityController := controller.NewCommunityController(communityService, aiService)
 	reviewController := controller.NewReviewController(reviewService)

@@ -14,9 +14,10 @@ func Migrate() error {
 	logger.Info("Running database migrations...")
 
 	models := []interface{}{
-		&model.Store{},
 		&model.User{},
 		&model.PasswordReset{},
+		&model.Store{},
+		&model.BusinessRegistration{},
 		&model.GoldPrice{},
 		&model.CommunityPost{},
 		&model.CommunityComment{},
@@ -33,6 +34,12 @@ func Migrate() error {
 
 	if err := DB.AutoMigrate(models...); err != nil {
 		logger.Error("Failed to run migrations", err)
+		return err
+	}
+
+	// 기존 stores 테이블의 사업자 정보를 business_registrations 테이블로 마이그레이션
+	if err := migrateBusinessRegistrations(); err != nil {
+		logger.Error("Failed to migrate business registrations", err)
 		return err
 	}
 
@@ -435,5 +442,120 @@ func seedStoreTags() error {
 		"stores_count": len(stores),
 	})
 
+	return nil
+}
+
+// migrateBusinessRegistrations 기존 stores 테이블의 사업자 정보를 business_registrations 테이블로 마이그레이션
+func migrateBusinessRegistrations() error {
+	logger.Info("Migrating business registrations from stores table...")
+
+	// stores 테이블에 business_number 컬럼이 있는지 확인
+	if !DB.Migrator().HasColumn(&model.Store{}, "business_number") {
+		logger.Info("business_number column not found in stores table, skipping migration")
+		return nil
+	}
+
+	// 기존 stores 데이터 조회 (사업자 정보가 있는 것만)
+	type OldStore struct {
+		ID                 uint
+		BusinessNumber     string
+		BusinessStartDate  string
+		RepresentativeName string
+		BusinessStatus     string
+		TaxType            string
+		IsVerified         bool
+		VerificationDate   *time.Time
+	}
+
+	var oldStores []OldStore
+	if err := DB.Table("stores").
+		Select("id, business_number, business_start_date, representative_name, business_status, tax_type, is_verified, verification_date").
+		Where("business_number != '' AND business_number IS NOT NULL").
+		Find(&oldStores).Error; err != nil {
+		logger.Error("Failed to query old stores with business info", err)
+		return err
+	}
+
+	if len(oldStores) == 0 {
+		logger.Info("No stores with business information found, skipping data migration")
+	} else {
+		logger.Info("Found stores with business information", map[string]interface{}{
+			"count": len(oldStores),
+		})
+
+		// business_registrations 테이블로 데이터 복사
+		for _, oldStore := range oldStores {
+			// 이미 존재하는지 확인
+			var existingCount int64
+			if err := DB.Model(&model.BusinessRegistration{}).
+				Where("store_id = ?", oldStore.ID).
+				Count(&existingCount).Error; err != nil {
+				logger.Error("Failed to check existing business registration", err)
+				return err
+			}
+
+			if existingCount > 0 {
+				logger.Info("Business registration already exists for store", map[string]interface{}{
+					"store_id": oldStore.ID,
+				})
+				continue
+			}
+
+			businessReg := model.BusinessRegistration{
+				StoreID:            oldStore.ID,
+				BusinessNumber:     oldStore.BusinessNumber,
+				BusinessStartDate:  oldStore.BusinessStartDate,
+				RepresentativeName: oldStore.RepresentativeName,
+				BusinessStatus:     oldStore.BusinessStatus,
+				TaxType:            oldStore.TaxType,
+				IsVerified:         oldStore.IsVerified,
+				VerificationDate:   oldStore.VerificationDate,
+			}
+
+			if err := DB.Create(&businessReg).Error; err != nil {
+				logger.Error("Failed to create business registration", err, map[string]interface{}{
+					"store_id": oldStore.ID,
+				})
+				return err
+			}
+
+			logger.Info("Migrated business registration", map[string]interface{}{
+				"store_id": oldStore.ID,
+			})
+		}
+
+		logger.Info("Business registrations migrated successfully", map[string]interface{}{
+			"count": len(oldStores),
+		})
+	}
+
+	// stores 테이블에서 사업자 정보 컬럼 삭제
+	columnsToDelete := []string{
+		"business_number",
+		"business_start_date",
+		"representative_name",
+		"business_status",
+		"tax_type",
+		"is_verified",
+		"verification_date",
+	}
+
+	for _, column := range columnsToDelete {
+		if DB.Migrator().HasColumn(&model.Store{}, column) {
+			if err := DB.Migrator().DropColumn(&model.Store{}, column); err != nil {
+				logger.Error("Failed to drop column from stores table", err, map[string]interface{}{
+					"column": column,
+				})
+				// 컬럼 삭제 실패는 치명적이지 않으므로 경고만 하고 계속 진행
+				logger.Warn("Continuing despite column drop failure", nil)
+			} else {
+				logger.Info("Dropped column from stores table", map[string]interface{}{
+					"column": column,
+				})
+			}
+		}
+	}
+
+	logger.Info("Business registration migration completed")
 	return nil
 }

@@ -20,6 +20,13 @@ type User struct {
 	Name         string         `gorm:"not null" json:"name"`                        // 이름
 	Nickname     string         `gorm:"uniqueIndex;not null" json:"nickname"`        // 닉네임 (자동 생성, 수정 가능)
 	Phone        string         `json:"phone"`                                       // 전화번호 (숫자만, 예: 01012345678)
+
+	// 인증 관련 필드
+	EmailVerified    bool       `gorm:"default:false" json:"email_verified"`         // 이메일 인증 여부
+	EmailVerifiedAt  *time.Time `json:"email_verified_at,omitempty"`                 // 이메일 인증 시각
+	PhoneVerified    bool       `gorm:"default:false" json:"phone_verified"`         // 휴대폰 인증 여부
+	PhoneVerifiedAt  *time.Time `json:"phone_verified_at,omitempty"`                 // 휴대폰 인증 시각
+
 	ProfileImage string         `json:"profile_image"`                               // 프로필 이미지 URL
 	Address      string         `json:"address"`                                     // 주소
 	Latitude     *float64       `json:"latitude"`                                    // 위도 (주소 기반)

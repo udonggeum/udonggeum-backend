@@ -614,3 +614,207 @@ func (ctrl *AuthController) KakaoCallback(c *gin.Context) {
 		"tokens": tokens,
 	})
 }
+
+// === 이메일/휴대폰 인증 관련 API ===
+
+type SendEmailVerificationRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type VerifyEmailRequest struct {
+	Email string `json:"email" binding:"required,email"`
+	Code  string `json:"code" binding:"required,len=6"`
+}
+
+type SendPhoneVerificationRequest struct {
+	Phone string `json:"phone" binding:"required"`
+}
+
+type VerifyPhoneRequest struct {
+	Phone string `json:"phone" binding:"required"`
+	Code  string `json:"code" binding:"required,len=6"`
+}
+
+// SendEmailVerification sends email verification code
+// POST /api/v1/auth/send-email-verification
+func (ctrl *AuthController) SendEmailVerification(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	var req SendEmailVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request data",
+		})
+		return
+	}
+
+	err := ctrl.authService.SendEmailVerification(req.Email)
+	if err != nil {
+		log.Error("Failed to send email verification", err, map[string]interface{}{
+			"email": req.Email,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to send verification email",
+		})
+		return
+	}
+
+	log.Info("Email verification sent", map[string]interface{}{
+		"email": req.Email,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Verification code sent to your email",
+	})
+}
+
+// VerifyEmail verifies email with code
+// POST /api/v1/auth/verify-email
+func (ctrl *AuthController) VerifyEmail(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	var req VerifyEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request data",
+		})
+		return
+	}
+
+	err := ctrl.authService.VerifyEmail(req.Email, req.Code)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidVerificationCode) {
+			log.Warn("Invalid verification code", map[string]interface{}{
+				"email": req.Email,
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid or expired verification code",
+			})
+			return
+		}
+
+		log.Error("Email verification failed", err, map[string]interface{}{
+			"email": req.Email,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to verify email",
+		})
+		return
+	}
+
+	log.Info("Email verified successfully", map[string]interface{}{
+		"email": req.Email,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Email verified successfully",
+	})
+}
+
+// SendPhoneVerification sends phone verification code
+// POST /api/v1/auth/send-phone-verification
+func (ctrl *AuthController) SendPhoneVerification(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	var req SendPhoneVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request data",
+		})
+		return
+	}
+
+	// Get user ID from context (must be authenticated)
+	userID, exists := c.Get("user_id")
+	if !exists {
+		log.Warn("User not authenticated", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Authentication required",
+		})
+		return
+	}
+
+	err := ctrl.authService.SendPhoneVerification(userID.(uint), req.Phone)
+	if err != nil {
+		log.Error("Failed to send phone verification", err, map[string]interface{}{
+			"phone": req.Phone,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to send verification SMS",
+		})
+		return
+	}
+
+	log.Info("Phone verification sent", map[string]interface{}{
+		"phone": req.Phone,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Verification code sent to your phone",
+	})
+}
+
+// VerifyPhone verifies phone with code
+// POST /api/v1/auth/verify-phone
+func (ctrl *AuthController) VerifyPhone(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	var req VerifyPhoneRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request data",
+		})
+		return
+	}
+
+	// Get user ID from context (must be authenticated)
+	userID, exists := c.Get("user_id")
+	if !exists {
+		log.Warn("User not authenticated", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Authentication required",
+		})
+		return
+	}
+
+	err := ctrl.authService.VerifyPhone(userID.(uint), req.Phone, req.Code)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidVerificationCode) {
+			log.Warn("Invalid verification code", map[string]interface{}{
+				"phone": req.Phone,
+			})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid or expired verification code",
+			})
+			return
+		}
+
+		log.Error("Phone verification failed", err, map[string]interface{}{
+			"phone": req.Phone,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to verify phone",
+		})
+		return
+	}
+
+	log.Info("Phone verified successfully", map[string]interface{}{
+		"phone": req.Phone,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Phone verified successfully",
+	})
+}
