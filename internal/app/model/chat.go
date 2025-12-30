@@ -10,8 +10,10 @@ import (
 type ChatRoomType string
 
 const (
-	ChatRoomTypeSale  ChatRoomType = "SALE"  // 판매글 기반 채팅
-	ChatRoomTypeStore ChatRoomType = "STORE" // 가게 문의 채팅
+	ChatRoomTypeStore    ChatRoomType = "STORE"     // 사용자가 매장에 일반 문의
+	ChatRoomTypeSellGold ChatRoomType = "SELL_GOLD" // 사용자 판매글에 내가 문의 (사용자의 금 판매글)
+	ChatRoomTypeBuyGold  ChatRoomType = "BUY_GOLD"  // 내 구매글에 사용자가 문의 (매장의 금 매입 홍보글)
+	ChatRoomTypeSale     ChatRoomType = "SALE"      // Deprecated: SELL_GOLD 또는 BUY_GOLD 사용
 )
 
 // ChatRoom 채팅방 모델

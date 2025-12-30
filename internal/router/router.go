@@ -86,9 +86,9 @@ func (r *Router) Setup() *gin.Engine {
 			stores.GET("", r.authMiddleware.OptionalAuthenticate(), r.storeController.ListStores)
 			stores.GET("/locations", r.storeController.ListLocations)
 			stores.GET("/:id", r.authMiddleware.OptionalAuthenticate(), r.storeController.GetStoreByID)
+			// 매장 등록: 일반 유저도 가능 (사업자 인증 후 자동으로 admin 권한 부여)
 			stores.POST("",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
 				r.storeController.CreateStore,
 			)
 			stores.PUT("/:id",
@@ -288,6 +288,20 @@ func (r *Router) Setup() *gin.Engine {
 				posts.POST("/:id/unpin",
 					r.authMiddleware.Authenticate(),
 					r.communityController.UnpinPost,
+				)
+
+				// Reservation and Transaction (금거래만)
+				posts.POST("/:id/reserve",
+					r.authMiddleware.Authenticate(),
+					r.communityController.ReservePost,
+				)
+				posts.DELETE("/:id/reserve",
+					r.authMiddleware.Authenticate(),
+					r.communityController.CancelReservation,
+				)
+				posts.POST("/:id/complete",
+					r.authMiddleware.Authenticate(),
+					r.communityController.CompleteTransaction,
 				)
 			}
 

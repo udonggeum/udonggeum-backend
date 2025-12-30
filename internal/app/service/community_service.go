@@ -33,6 +33,11 @@ type CommunityService interface {
 	PinPost(postID, userID uint) error
 	UnpinPost(postID, userID uint) error
 	GetStoreGallery(storeID uint, page, pageSize int) ([]map[string]interface{}, int64, error)
+
+	// Reservation and transaction operations (금거래만)
+	ReservePost(postID, reservedByUserID, authorUserID uint) error     // 예약하기
+	CancelReservation(postID, userID uint) error                       // 예약 취소
+	CompleteTransaction(postID, userID uint) error                     // 거래 완료
 }
 
 type communityService struct {
@@ -439,4 +444,107 @@ func truncateText(text string, maxLen int) string {
 		return text
 	}
 	return text[:maxLen] + "..."
+}
+
+// ReservePost 금거래 게시글 예약하기
+func (s *communityService) ReservePost(postID, reservedByUserID, authorUserID uint) error {
+	// 게시글 조회
+	post, err := s.repo.GetPostByID(postID, false)
+	if err != nil {
+		return fmt.Errorf("failed to get post: %v", err)
+	}
+
+	// 금 판매글(sell_gold)만 예약 가능 (금 구매글은 매장의 다수 대상 홍보글이므로 예약 불필요)
+	if post.Type != model.TypeSellGold {
+		return fmt.Errorf("only sell_gold posts can be reserved")
+	}
+
+	// 본인 게시글은 예약 불가
+	if post.UserID == reservedByUserID {
+		return fmt.Errorf("cannot reserve your own post")
+	}
+
+	// 작성자만 예약 가능
+	if post.UserID != authorUserID {
+		return fmt.Errorf("only the author can reserve this post")
+	}
+
+	// 이미 예약 중이거나 거래 완료인 경우
+	if post.ReservationStatus != nil {
+		if *post.ReservationStatus == "reserved" {
+			return fmt.Errorf("post is already reserved")
+		}
+		if *post.ReservationStatus == "completed" {
+			return fmt.Errorf("post is already completed")
+		}
+	}
+
+	// 예약 처리
+	if err := s.repo.ReservePost(postID, reservedByUserID); err != nil {
+		return fmt.Errorf("failed to reserve post: %v", err)
+	}
+
+	return nil
+}
+
+// CancelReservation 예약 취소
+func (s *communityService) CancelReservation(postID, userID uint) error {
+	// 게시글 조회
+	post, err := s.repo.GetPostByID(postID, false)
+	if err != nil {
+		return fmt.Errorf("failed to get post: %v", err)
+	}
+
+	// 금 판매글만 예약 취소 가능
+	if post.Type != model.TypeSellGold {
+		return fmt.Errorf("only sell_gold posts support reservation")
+	}
+
+	// 작성자만 예약 취소 가능
+	if post.UserID != userID {
+		return fmt.Errorf("only the author can cancel reservation")
+	}
+
+	// 예약 상태인지 확인
+	if post.ReservationStatus == nil || *post.ReservationStatus != "reserved" {
+		return fmt.Errorf("post is not reserved")
+	}
+
+	// 예약 취소 처리
+	if err := s.repo.CancelReservation(postID); err != nil {
+		return fmt.Errorf("failed to cancel reservation: %v", err)
+	}
+
+	return nil
+}
+
+// CompleteTransaction 거래 완료
+func (s *communityService) CompleteTransaction(postID, userID uint) error {
+	// 게시글 조회
+	post, err := s.repo.GetPostByID(postID, false)
+	if err != nil {
+		return fmt.Errorf("failed to get post: %v", err)
+	}
+
+	// 금 판매글만 거래 완료 가능
+	if post.Type != model.TypeSellGold {
+		return fmt.Errorf("only sell_gold posts support reservation")
+	}
+
+	// 작성자만 거래 완료 처리 가능
+	if post.UserID != userID {
+		return fmt.Errorf("only the author can complete transaction")
+	}
+
+	// 이미 거래 완료인 경우
+	if post.ReservationStatus != nil && *post.ReservationStatus == "completed" {
+		return fmt.Errorf("post is already completed")
+	}
+
+	// 거래 완료 처리
+	if err := s.repo.CompleteTransaction(postID); err != nil {
+		return fmt.Errorf("failed to complete transaction: %v", err)
+	}
+
+	return nil
 }

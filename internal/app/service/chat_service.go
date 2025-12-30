@@ -80,7 +80,7 @@ func (s *chatService) CreateOrGetChatRoom(user1ID, user2ID uint, roomType model.
 		User2ID: user2ID,
 	}
 
-	if roomType == model.ChatRoomTypeSale {
+	if roomType == model.ChatRoomTypeSellGold || roomType == model.ChatRoomTypeBuyGold || roomType == model.ChatRoomTypeSale {
 		newRoom.ProductID = resourceID
 	} else if roomType == model.ChatRoomTypeStore {
 		newRoom.StoreID = resourceID

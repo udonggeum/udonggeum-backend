@@ -72,6 +72,13 @@ type CommunityPost struct {
 	StoreID     *uint    `gorm:"index" json:"store_id,omitempty"`                // 매장 ID (사장님 글일 때)
 	Store       *Store   `gorm:"foreignKey:StoreID" json:"store,omitempty"`      // 매장 정보
 
+	// 예약 및 거래 완료 관련 필드 (금거래만)
+	ReservationStatus *string    `gorm:"type:varchar(20)" json:"reservation_status,omitempty"` // 예약 상태 (null=판매중, reserved=예약중, completed=거래완료)
+	ReservedByUserID  *uint      `gorm:"index" json:"reserved_by_user_id,omitempty"`          // 예약한 사용자 ID
+	ReservedByUser    *User      `gorm:"foreignKey:ReservedByUserID" json:"reserved_by_user,omitempty"` // 예약한 사용자 정보
+	ReservedAt        *time.Time `json:"reserved_at,omitempty"`                               // 예약 시간
+	CompletedAt       *time.Time `json:"completed_at,omitempty"`                              // 거래 완료 시간
+
 	// QnA 관련 필드
 	IsAnswered   bool  `gorm:"default:false" json:"is_answered"`              // 답변 완료 여부
 	AcceptedAnswerID *uint `gorm:"index" json:"accepted_answer_id,omitempty"` // 채택된 답변 ID

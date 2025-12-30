@@ -39,6 +39,11 @@ type CommunityRepository interface {
 	// Store post management
 	UpdatePostPin(postID uint, isPinned bool) error
 	GetPostsWithImages(storeID uint, limit, offset int) ([]model.CommunityPost, int64, error)
+
+	// Reservation and transaction operations
+	ReservePost(postID, reservedByUserID uint) error
+	CancelReservation(postID uint) error
+	CompleteTransaction(postID uint) error
 }
 
 type communityRepository struct {
@@ -74,6 +79,7 @@ func (r *communityRepository) GetPostByID(id uint, preload bool) (*model.Communi
 		query = query.
 			Preload("User").
 			Preload("Store").
+			Preload("ReservedByUser").
 			Preload("Comments", func(db *gorm.DB) *gorm.DB {
 				return db.Where("parent_id IS NULL").Order("created_at ASC")
 			}).
@@ -511,4 +517,42 @@ func (r *communityRepository) GetPostsWithImages(storeID uint, limit, offset int
 	}
 
 	return posts, total, nil
+}
+
+// ReservePost 게시글 예약하기
+func (r *communityRepository) ReservePost(postID, reservedByUserID uint) error {
+	now := gorm.Expr("NOW()")
+	status := "reserved"
+
+	return r.db.Model(&model.CommunityPost{}).
+		Where("id = ?", postID).
+		Updates(map[string]interface{}{
+			"reservation_status":  status,
+			"reserved_by_user_id": reservedByUserID,
+			"reserved_at":         now,
+		}).Error
+}
+
+// CancelReservation 예약 취소
+func (r *communityRepository) CancelReservation(postID uint) error {
+	return r.db.Model(&model.CommunityPost{}).
+		Where("id = ?", postID).
+		Updates(map[string]interface{}{
+			"reservation_status":  nil,
+			"reserved_by_user_id": nil,
+			"reserved_at":         nil,
+		}).Error
+}
+
+// CompleteTransaction 거래 완료
+func (r *communityRepository) CompleteTransaction(postID uint) error {
+	now := gorm.Expr("NOW()")
+	status := "completed"
+
+	return r.db.Model(&model.CommunityPost{}).
+		Where("id = ?", postID).
+		Updates(map[string]interface{}{
+			"reservation_status": status,
+			"completed_at":       now,
+		}).Error
 }

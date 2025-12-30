@@ -705,3 +705,124 @@ func (c *CommunityController) GenerateContent(ctx *gin.Context) {
 		Content: content,
 	})
 }
+
+// ReservePost godoc
+// @Summary 금거래 게시글 예약하기
+// @Description 게시글 작성자가 특정 구매자와 거래 예약을 설정합니다 (금거래만)
+// @Tags community
+// @Accept json
+// @Produce json
+// @Param id path int true "게시글 ID"
+// @Param request body object{reserved_by_user_id=int} true "예약 요청"
+// @Success 200 {object} gin.H
+// @Failure 400 {object} gin.H
+// @Failure 401 {object} gin.H
+// @Failure 403 {object} gin.H
+// @Security BearerAuth
+// @Router /api/v1/community/posts/{id}/reserve [post]
+func (c *CommunityController) ReservePost(ctx *gin.Context) {
+	// 게시글 ID
+	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		return
+	}
+
+	// 인증 확인
+	userID, exists := ctx.Get(middleware.UserIDKey)
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	// 예약할 사용자 ID
+	var req struct {
+		ReservedByUserID uint `json:"reserved_by_user_id" binding:"required"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 예약 처리
+	if err := c.service.ReservePost(uint(postID), req.ReservedByUserID, userID.(uint)); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "post reserved successfully"})
+}
+
+// CancelReservation godoc
+// @Summary 금거래 예약 취소
+// @Description 게시글 작성자가 예약을 취소하고 다시 판매중 상태로 변경합니다
+// @Tags community
+// @Accept json
+// @Produce json
+// @Param id path int true "게시글 ID"
+// @Success 200 {object} gin.H
+// @Failure 400 {object} gin.H
+// @Failure 401 {object} gin.H
+// @Failure 403 {object} gin.H
+// @Security BearerAuth
+// @Router /api/v1/community/posts/{id}/reserve [delete]
+func (c *CommunityController) CancelReservation(ctx *gin.Context) {
+	// 게시글 ID
+	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		return
+	}
+
+	// 인증 확인
+	userID, exists := ctx.Get(middleware.UserIDKey)
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	// 예약 취소 처리
+	if err := c.service.CancelReservation(uint(postID), userID.(uint)); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "reservation cancelled successfully"})
+}
+
+// CompleteTransaction godoc
+// @Summary 금거래 완료 처리
+// @Description 게시글 작성자가 거래 완료 상태로 변경합니다
+// @Tags community
+// @Accept json
+// @Produce json
+// @Param id path int true "게시글 ID"
+// @Success 200 {object} gin.H
+// @Failure 400 {object} gin.H
+// @Failure 401 {object} gin.H
+// @Failure 403 {object} gin.H
+// @Security BearerAuth
+// @Router /api/v1/community/posts/{id}/complete [post]
+func (c *CommunityController) CompleteTransaction(ctx *gin.Context) {
+	// 게시글 ID
+	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		return
+	}
+
+	// 인증 확인
+	userID, exists := ctx.Get(middleware.UserIDKey)
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	// 거래 완료 처리
+	if err := c.service.CompleteTransaction(uint(postID), userID.(uint)); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "transaction completed successfully"})
+}

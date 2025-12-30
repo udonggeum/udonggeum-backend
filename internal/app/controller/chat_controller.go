@@ -44,8 +44,8 @@ func NewChatController(chatService service.ChatService, hub *ws.Hub) *ChatContro
 // CreateChatRoomRequest 채팅방 생성 요청
 type CreateChatRoomRequest struct {
 	TargetUserID uint             `json:"target_user_id" binding:"required"` // 대화 상대
-	Type         model.ChatRoomType `json:"type" binding:"required,oneof=SALE STORE"`
-	ProductID    *uint            `json:"product_id,omitempty"` // SALE 타입일 때
+	Type         model.ChatRoomType `json:"type" binding:"required,oneof=STORE BUY_GOLD SELL_GOLD SALE"` // 채팅방 타입
+	ProductID    *uint            `json:"product_id,omitempty"` // SELL_GOLD, BUY_GOLD 타입일 때
 	StoreID      *uint            `json:"store_id,omitempty"`   // STORE 타입일 때
 }
 
@@ -86,7 +86,7 @@ func (ctrl *ChatController) CreateChatRoom(c *gin.Context) {
 
 	// 타입에 따라 resourceID 설정
 	var resourceID *uint
-	if req.Type == model.ChatRoomTypeSale {
+	if req.Type == model.ChatRoomTypeSellGold || req.Type == model.ChatRoomTypeBuyGold || req.Type == model.ChatRoomTypeSale {
 		resourceID = req.ProductID
 	} else if req.Type == model.ChatRoomTypeStore {
 		resourceID = req.StoreID

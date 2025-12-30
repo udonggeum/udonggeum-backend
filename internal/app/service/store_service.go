@@ -44,6 +44,7 @@ type StoreService interface {
 	IsStoreLiked(storeID, userID uint) (bool, error)
 	GetUserLikedStores(userID uint) ([]model.Store, error)
 	GetUserLikedStoreIDs(userID uint) ([]uint, error)
+	PromoteUserToAdmin(userID uint) error
 }
 
 type storeService struct {
@@ -538,4 +539,39 @@ func (s *storeService) GetUserLikedStoreIDs(userID uint) ([]uint, error) {
 		"count":   len(storeIDs),
 	})
 	return storeIDs, nil
+}
+
+// PromoteUserToAdmin promotes a user to admin role
+func (s *storeService) PromoteUserToAdmin(userID uint) error {
+	logger.Info("Promoting user to admin", map[string]interface{}{
+		"user_id": userID,
+	})
+
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		logger.Error("Failed to find user for promotion", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return err
+	}
+
+	if user.Role == model.RoleAdmin {
+		logger.Info("User is already admin", map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil // Already admin, no need to update
+	}
+
+	user.Role = model.RoleAdmin
+	if err := s.userRepo.Update(user); err != nil {
+		logger.Error("Failed to promote user to admin", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return err
+	}
+
+	logger.Info("User promoted to admin successfully", map[string]interface{}{
+		"user_id": userID,
+	})
+	return nil
 }

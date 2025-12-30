@@ -4,11 +4,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
+	"github.com/ikkim/udonggeum-backend/pkg/util"
 )
 
 type StoreController struct {
@@ -32,6 +34,11 @@ type StoreRequest struct {
 	OpenTime    string   `json:"open_time"`
 	CloseTime   string   `json:"close_time"`
 	TagIDs      []uint   `json:"tag_ids"` // 매장 태그 ID 배열
+
+	// 사업자 인증 정보
+	BusinessNumber        string `json:"business_number" binding:"required"`          // 사업자등록번호 (필수)
+	BusinessStartDate     string `json:"business_start_date" binding:"required"`      // 개업일자 (필수)
+	RepresentativeName    string `json:"representative_name" binding:"required"`      // 대표자명 (필수)
 }
 
 func (ctrl *StoreController) ListStores(c *gin.Context) {
@@ -53,6 +60,14 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 		}
 	}
 
+	// Parse page_size if provided (for limiting results)
+	var pageSize int
+	if pageSizeStr := c.Query("page_size"); pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
+			pageSize = ps
+		}
+	}
+
 	opts := service.StoreListOptions{
 		Region:          c.Query("region"),
 		District:        c.Query("district"),
@@ -70,6 +85,11 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 			"error": "Failed to fetch stores",
 		})
 		return
+	}
+
+	// Apply page_size limit if provided
+	if pageSize > 0 && len(stores) > pageSize {
+		stores = stores[:pageSize]
 	}
 
 	// 인증된 사용자의 경우 좋아요 상태 포함
@@ -207,26 +227,77 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		return
 	}
 
-	// 태그 ID로부터 Tag 객체 생성
+	// 1. 사업자 등록번호 진위 확인
+	log.Info("Verifying business number", map[string]interface{}{
+		"business_number": req.BusinessNumber,
+		"user_id":         userID,
+	})
+
+	verificationResult, err := util.VerifyBusinessNumber(
+		req.BusinessNumber,
+		req.BusinessStartDate,
+		req.RepresentativeName,
+	)
+	if err != nil {
+		log.Error("Business verification API error", err, map[string]interface{}{
+			"business_number": req.BusinessNumber,
+			"user_id":         userID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "사업자 인증 중 오류가 발생했습니다",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	if !verificationResult.IsValid {
+		log.Warn("Business verification failed", map[string]interface{}{
+			"business_number": req.BusinessNumber,
+			"user_id":         userID,
+			"reason":          verificationResult.Message,
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "사업자 인증에 실패했습니다",
+			"message": verificationResult.Message,
+		})
+		return
+	}
+
+	log.Info("Business verification successful", map[string]interface{}{
+		"business_number": req.BusinessNumber,
+		"user_id":         userID,
+		"status":          verificationResult.BusinessStatus,
+	})
+
+	// 2. 태그 ID로부터 Tag 객체 생성
 	var tags []model.Tag
 	for _, tagID := range req.TagIDs {
 		tags = append(tags, model.Tag{ID: tagID})
 	}
 
+	// 3. 사업자 인증 성공 - 매장 생성
+	now := time.Now()
 	store := &model.Store{
-		UserID:      userID,
-		Name:        req.Name,
-		Region:      req.Region,
-		District:    req.District,
-		Address:     req.Address,
-		Latitude:    req.Latitude,
-		Longitude:   req.Longitude,
-		PhoneNumber: req.PhoneNumber,
-		ImageURL:    req.ImageURL,
-		Description: req.Description,
-		OpenTime:    req.OpenTime,
-		CloseTime:   req.CloseTime,
-		Tags:        tags,
+		UserID:                userID,
+		Name:                  req.Name,
+		Region:                req.Region,
+		District:              req.District,
+		Address:               req.Address,
+		Latitude:              req.Latitude,
+		Longitude:             req.Longitude,
+		PhoneNumber:           req.PhoneNumber,
+		ImageURL:              req.ImageURL,
+		Description:           req.Description,
+		OpenTime:              req.OpenTime,
+		CloseTime:             req.CloseTime,
+		Tags:                  tags,
+		BusinessNumber:        req.BusinessNumber,
+		BusinessStartDate:     req.BusinessStartDate,
+		RepresentativeName:    req.RepresentativeName,
+		BusinessStatus:        verificationResult.BusinessStatus,
+		TaxType:               verificationResult.TaxType,
+		IsVerified:            true,
+		VerificationDate:      &now,
 	}
 
 	created, err := ctrl.storeService.CreateStore(store)
@@ -241,13 +312,25 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		return
 	}
 
-	log.Info("Store created", map[string]interface{}{
+	// 4. 사용자를 admin으로 승격 (UserService 필요)
+	err = ctrl.storeService.PromoteUserToAdmin(userID)
+	if err != nil {
+		log.Error("Failed to promote user to admin", err, map[string]interface{}{
+			"user_id":  userID,
+			"store_id": created.ID,
+		})
+		// 매장은 생성됐으나 권한 승격 실패 - 경고 로그만 남기고 계속 진행
+		// 관리자가 수동으로 권한을 부여할 수 있음
+	}
+
+	log.Info("Store created successfully", map[string]interface{}{
 		"store_id": created.ID,
 		"user_id":  userID,
+		"verified": created.IsVerified,
 	})
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message": "Store created successfully",
+		"message": "매장이 성공적으로 등록되었습니다",
 		"store":   created,
 	})
 }

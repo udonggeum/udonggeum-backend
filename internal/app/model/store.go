@@ -51,6 +51,15 @@ type Store struct {
 	OpenTime    string         `gorm:"type:varchar(10)" json:"open_time"`    // 오픈 시간 (예: "09:00")
 	CloseTime   string         `gorm:"type:varchar(10)" json:"close_time"`   // 마감 시간 (예: "20:00")
 
+	// 사업자 정보 (사업자 등록번호 인증 시 사용)
+	BusinessNumber        string `gorm:"type:varchar(10);index" json:"business_number,omitempty"`          // 사업자등록번호 (10자리)
+	BusinessStartDate     string `gorm:"type:varchar(8)" json:"business_start_date,omitempty"`             // 개업일자 (YYYYMMDD)
+	RepresentativeName    string `gorm:"type:varchar(100)" json:"representative_name,omitempty"`           // 대표자명
+	BusinessStatus        string `gorm:"type:varchar(20)" json:"business_status,omitempty"`                // 사업자 상태 (계속사업자/휴업자/폐업자)
+	TaxType               string `gorm:"type:varchar(20)" json:"tax_type,omitempty"`                       // 과세 유형 (일반과세자/간이과세자)
+	IsVerified            bool   `gorm:"default:false" json:"is_verified"`                                 // 사업자 인증 여부
+	VerificationDate      *time.Time `json:"verification_date,omitempty"`                                  // 인증 일시
+
 	// 매장 태그 (Many-to-Many 관계)
 	Tags []Tag `gorm:"many2many:store_tags;" json:"tags,omitempty"`
 
