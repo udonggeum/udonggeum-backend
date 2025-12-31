@@ -73,9 +73,21 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 				"path":  c.Request.URL.Path,
 				"error": err.Error(),
 			})
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid or expired token",
-			})
+
+			// 토큰 만료 에러인 경우 명확히 표시
+			if err == util.ErrExpiredToken {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error":         "token has expired",
+					"token_expired": true,
+					"message":       "Please refresh your access token",
+				})
+			} else {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error":         "invalid token",
+					"token_expired": false,
+					"message":       "Invalid authentication token",
+				})
+			}
 			c.Abort()
 			return
 		}

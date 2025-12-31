@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -129,7 +130,8 @@ func TestAuthMiddleware_Authenticate_InvalidToken(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
-	assert.Contains(t, w.Body.String(), "Invalid or expired token")
+	assert.Contains(t, w.Body.String(), "invalid token")
+	assert.Contains(t, w.Body.String(), "token_expired")
 }
 
 func TestAuthMiddleware_RequireRole_Success(t *testing.T) {
@@ -269,8 +271,8 @@ func TestGetUserRole(t *testing.T) {
 	assert.Empty(t, role)
 
 	// After setting user_role
-	c.Set("user_role", "admin")
+	c.Set("user_role", model.UserRole("admin"))
 	role, exists = GetUserRole(c)
 	assert.True(t, exists)
-	assert.Equal(t, "admin", role)
+	assert.Equal(t, model.UserRole("admin"), role)
 }

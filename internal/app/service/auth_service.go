@@ -38,6 +38,7 @@ type AuthService interface {
 	GetUserByID(id uint) (*model.User, error)
 	UpdateProfile(userID uint, name, phone, nickname, address, profileImage string) (*model.User, error)
 	CheckNickname(nickname string) (bool, error)
+	CheckEmailAvailability(email string) (bool, error)
 	RefreshToken(refreshToken string) (*util.TokenPair, error)
 	RevokeToken(refreshToken string) error
 	GetKakaoLoginURL() string
@@ -379,6 +380,31 @@ func (s *authService) CheckNickname(nickname string) (bool, error) {
 	isAvailable := existingUser == nil
 	logger.Debug("Nickname availability checked", map[string]interface{}{
 		"nickname":    nickname,
+		"is_available": isAvailable,
+	})
+
+	return isAvailable, nil
+}
+
+// CheckEmailAvailability checks if an email is available for registration
+func (s *authService) CheckEmailAvailability(email string) (bool, error) {
+	logger.Debug("Checking email availability", map[string]interface{}{
+		"email": email,
+	})
+
+	// Check if email already exists
+	existingUser, err := s.userRepo.FindByEmail(email)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Error("Failed to check email availability", err, map[string]interface{}{
+			"email": email,
+		})
+		return false, err
+	}
+
+	// If user exists, email is not available
+	isAvailable := existingUser == nil
+	logger.Debug("Email availability checked", map[string]interface{}{
+		"email":        email,
 		"is_available": isAvailable,
 	})
 

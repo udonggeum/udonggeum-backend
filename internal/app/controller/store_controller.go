@@ -14,14 +14,16 @@ import (
 )
 
 type StoreController struct {
-	storeService service.StoreService
-	authService  service.AuthService
+	storeService  service.StoreService
+	authService   service.AuthService
+	reviewService *service.ReviewService
 }
 
-func NewStoreController(storeService service.StoreService, authService service.AuthService) *StoreController {
+func NewStoreController(storeService service.StoreService, authService service.AuthService, reviewService *service.ReviewService) *StoreController {
 	return &StoreController{
-		storeService: storeService,
-		authService:  authService,
+		storeService:  storeService,
+		authService:   authService,
+		reviewService: reviewService,
 	}
 }
 
@@ -203,9 +205,24 @@ func (ctrl *StoreController) GetStoreByID(c *gin.Context) {
 		return
 	}
 
+	// 리뷰 통계 가져오기
+	reviewStats, err := ctrl.reviewService.GetStoreStatistics(uint(id))
+	if err != nil {
+		log.Warn("Failed to fetch review statistics", map[string]interface{}{
+			"store_id": id,
+			"error":    err.Error(),
+		})
+	}
+
 	// 좋아요 상태 확인 (인증된 사용자만)
 	response := gin.H{
 		"store": store,
+	}
+
+	// 리뷰 통계 추가
+	if reviewStats != nil {
+		response["average_rating"] = reviewStats["average_rating"]
+		response["review_count"] = reviewStats["review_count"]
 	}
 
 	// 선택적으로 사용자 좋아요 상태 포함

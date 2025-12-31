@@ -46,6 +46,10 @@ type CheckNicknameRequest struct {
 	Nickname string `json:"nickname" binding:"required,min=2,max=20"`
 }
 
+type CheckEmailRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
 type ForgotPasswordRequest struct {
 	Email string `json:"email" binding:"required,email"`
 }
@@ -109,13 +113,14 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "User registered successfully",
 		"user": gin.H{
-			"id":       user.ID,
-			"email":    user.Email,
-			"name":     user.Name,
-			"nickname": user.Nickname,
-			"phone":    user.Phone,
-			"address":  user.Address,
-			"role":     user.Role,
+			"id":             user.ID,
+			"email":          user.Email,
+			"name":           user.Name,
+			"nickname":       user.Nickname,
+			"phone":          user.Phone,
+			"phone_verified": user.PhoneVerified,
+			"address":        user.Address,
+			"role":           user.Role,
 		},
 		"tokens": tokens,
 	})
@@ -170,13 +175,14 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Login successful",
 		"user": gin.H{
-			"id":       user.ID,
-			"email":    user.Email,
-			"name":     user.Name,
-			"nickname": user.Nickname,
-			"phone":    user.Phone,
-			"address":  user.Address,
-			"role":     user.Role,
+			"id":             user.ID,
+			"email":          user.Email,
+			"name":           user.Name,
+			"nickname":       user.Nickname,
+			"phone":          user.Phone,
+			"phone_verified": user.PhoneVerified,
+			"address":        user.Address,
+			"role":           user.Role,
 		},
 		"tokens": tokens,
 	})
@@ -222,15 +228,16 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
-			"id":       user.ID,
-			"email":    user.Email,
-			"name":     user.Name,
-			"nickname": user.Nickname,
-			"phone":    user.Phone,
-			"address":  user.Address,
- 			"profile_image": user.ProfileImage,
-			"role":     user.Role,
-    },
+			"id":             user.ID,
+			"email":          user.Email,
+			"name":           user.Name,
+			"nickname":       user.Nickname,
+			"phone":          user.Phone,
+			"phone_verified": user.PhoneVerified,
+			"address":        user.Address,
+			"profile_image":  user.ProfileImage,
+			"role":           user.Role,
+		},
 	})
 }
 
@@ -305,14 +312,15 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Profile updated successfully",
 		"user": gin.H{
-			"id":       user.ID,
-			"email":    user.Email,
-			"name":     user.Name,
-			"nickname": user.Nickname,
-			"phone":    user.Phone,
-			"address":  user.Address,
-			"profile_image": user.ProfileImage,
-			"role":     user.Role,
+			"id":             user.ID,
+			"email":          user.Email,
+			"name":           user.Name,
+			"nickname":       user.Nickname,
+			"phone":          user.Phone,
+			"phone_verified": user.PhoneVerified,
+			"address":        user.Address,
+			"profile_image":  user.ProfileImage,
+			"role":           user.Role,
 		},
 	})
 }
@@ -531,6 +539,48 @@ func (ctrl *AuthController) CheckNickname(c *gin.Context) {
 	})
 }
 
+// CheckEmailAvailability checks if an email is available for registration
+// POST /api/v1/auth/check-email
+func (ctrl *AuthController) CheckEmailAvailability(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	var req CheckEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid check email request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	log.Debug("Checking email availability", map[string]interface{}{
+		"email": req.Email,
+	})
+
+	isAvailable, err := ctrl.authService.CheckEmailAvailability(req.Email)
+	if err != nil {
+		log.Error("Failed to check email availability", err, map[string]interface{}{
+			"email": req.Email,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to check email availability",
+		})
+		return
+	}
+
+	log.Info("Email availability checked", map[string]interface{}{
+		"email":        req.Email,
+		"is_available": isAvailable,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"is_available": isAvailable,
+	})
+}
+
 // GetKakaoLoginURL returns the Kakao OAuth login URL
 // GET /api/v1/auth/kakao/login
 func (ctrl *AuthController) GetKakaoLoginURL(c *gin.Context) {
@@ -603,13 +653,14 @@ func (ctrl *AuthController) KakaoCallback(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Kakao login successful",
 		"user": gin.H{
-			"id":            user.ID,
-			"email":         user.Email,
-			"name":          user.Name,
-			"nickname":      user.Nickname,
-			"phone":         user.Phone,
-			"profile_image": user.ProfileImage,
-			"role":          user.Role,
+			"id":             user.ID,
+			"email":          user.Email,
+			"name":           user.Name,
+			"nickname":       user.Nickname,
+			"phone":          user.Phone,
+			"phone_verified": user.PhoneVerified,
+			"profile_image":  user.ProfileImage,
+			"role":           user.Role,
 		},
 		"tokens": tokens,
 	})

@@ -76,6 +76,7 @@ func (r *Router) Setup() *gin.Engine {
 			auth.POST("/forgot-password", r.authController.ForgotPassword)
 			auth.POST("/reset-password", r.authController.ResetPassword)
 			auth.POST("/check-nickname", r.authController.CheckNickname)
+			auth.POST("/check-email", r.authController.CheckEmailAvailability)
 			auth.GET("/me", r.authMiddleware.Authenticate(), r.authController.GetMe)
 			auth.PUT("/me", r.authMiddleware.Authenticate(), r.authController.UpdateMe)
 
