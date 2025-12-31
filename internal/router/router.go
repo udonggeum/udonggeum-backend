@@ -8,16 +8,17 @@ import (
 )
 
 type Router struct {
-	authController      *controller.AuthController
-	storeController     *controller.StoreController
-	goldPriceController *controller.GoldPriceController
-	communityController *controller.CommunityController
-	reviewController    *controller.ReviewController
-	uploadController    *controller.UploadController
-	tagController       *controller.TagController
-	chatController      *controller.ChatController
-	authMiddleware      *middleware.AuthMiddleware
-	config              *config.Config
+	authController         *controller.AuthController
+	storeController        *controller.StoreController
+	goldPriceController    *controller.GoldPriceController
+	communityController    *controller.CommunityController
+	reviewController       *controller.ReviewController
+	uploadController       *controller.UploadController
+	tagController          *controller.TagController
+	chatController         *controller.ChatController
+	notificationController *controller.NotificationController
+	authMiddleware         *middleware.AuthMiddleware
+	config                 *config.Config
 }
 
 func NewRouter(
@@ -29,20 +30,22 @@ func NewRouter(
 	uploadController *controller.UploadController,
 	tagController *controller.TagController,
 	chatController *controller.ChatController,
+	notificationController *controller.NotificationController,
 	authMiddleware *middleware.AuthMiddleware,
 	cfg *config.Config,
 ) *Router {
 	return &Router{
-		authController:      authController,
-		storeController:     storeController,
-		goldPriceController: goldPriceController,
-		communityController: communityController,
-		reviewController:    reviewController,
-		uploadController:    uploadController,
-		tagController:       tagController,
-		chatController:      chatController,
-		authMiddleware:      authMiddleware,
-		config:              cfg,
+		authController:         authController,
+		storeController:        storeController,
+		goldPriceController:    goldPriceController,
+		communityController:    communityController,
+		reviewController:       reviewController,
+		uploadController:       uploadController,
+		tagController:          tagController,
+		chatController:         chatController,
+		notificationController: notificationController,
+		authMiddleware:         authMiddleware,
+		config:                 cfg,
 	}
 }
 
@@ -149,6 +152,27 @@ func (r *Router) Setup() *gin.Engine {
 				r.authMiddleware.RequireRole("admin"),
 				r.storeController.UpdateMyStore,
 			)
+
+			// Notification settings
+			users.GET("/notification-settings",
+				r.authMiddleware.Authenticate(),
+				r.notificationController.GetNotificationSettings,
+			)
+			users.PUT("/notification-settings",
+				r.authMiddleware.Authenticate(),
+				r.notificationController.UpdateNotificationSettings,
+			)
+		}
+
+		// Notifications routes
+		notifications := v1.Group("/notifications")
+		notifications.Use(r.authMiddleware.Authenticate())
+		{
+			notifications.GET("", r.notificationController.GetNotifications)
+			notifications.GET("/unread-count", r.notificationController.GetUnreadCount)
+			notifications.PATCH("/:id/read", r.notificationController.MarkAsRead)
+			notifications.PATCH("/read-all", r.notificationController.MarkAllAsRead)
+			notifications.DELETE("/:id", r.notificationController.DeleteNotification)
 		}
 
 		// Reviews routes

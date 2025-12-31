@@ -308,9 +308,9 @@ func (h *Hub) HandleClientMessage(client *Client, message []byte) {
 
 		// 같은 채팅방의 다른 사용자에게 브로드캐스트
 		response := map[string]interface{}{
-			"type":        msg.Type,
+			"type":         msg.Type,
 			"chat_room_id": msg.ChatRoomID,
-			"user_id":     client.UserID,
+			"user_id":      client.UserID,
 		}
 
 		if err := h.SendToRoom(msg.ChatRoomID, response, client.UserID); err != nil {
@@ -320,4 +320,41 @@ func (h *Hub) HandleClientMessage(client *Client, message []byte) {
 			})
 		}
 	}
+}
+
+// SendNotificationToUser 특정 사용자에게 알림 전송 (모든 디바이스)
+func (h *Hub) SendNotificationToUser(userID uint, notification interface{}) error {
+	data, err := json.Marshal(notification)
+	if err != nil {
+		logger.Error("Failed to marshal notification", err, nil)
+		return err
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	// 멀티 디바이스: 모든 세션에 전송
+	if clientList, ok := h.clients[userID]; ok {
+		for _, client := range clientList {
+			select {
+			case client.Send <- data:
+				// 전송 성공
+			default:
+				// Send 채널이 막혀있음
+				logger.Warn("Client send buffer full for notification", map[string]interface{}{
+					"user_id": userID,
+				})
+			}
+		}
+		logger.Info("Notification sent to user", map[string]interface{}{
+			"user_id": userID,
+			"devices": len(clientList),
+		})
+	} else {
+		logger.Info("User not connected, notification will be shown on next login", map[string]interface{}{
+			"user_id": userID,
+		})
+	}
+
+	return nil
 }

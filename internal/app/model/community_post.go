@@ -69,6 +69,8 @@ type CommunityPost struct {
 	Weight      *float64 `json:"weight,omitempty"`                               // 중량 (g)
 	Price       *int64   `json:"price,omitempty"`                                // 희망가격/매입가격 (원)
 	Location    *string  `gorm:"type:varchar(100)" json:"location,omitempty"`    // 거래 희망 지역
+	Region      *string  `gorm:"type:varchar(50)" json:"region,omitempty"`       // 시/도 (알림 필터링용)
+	District    *string  `gorm:"type:varchar(50)" json:"district,omitempty"`     // 시/군/구 (알림 필터링용)
 	StoreID     *uint    `gorm:"index" json:"store_id,omitempty"`                // 매장 ID (사장님 글일 때)
 	Store       *Store   `gorm:"foreignKey:StoreID" json:"store,omitempty"`      // 매장 정보
 
@@ -131,6 +133,8 @@ type CreatePostRequest struct {
 	Weight   *float64 `json:"weight,omitempty"`
 	Price    *int64   `json:"price,omitempty"`
 	Location *string  `json:"location,omitempty"`
+	Region   *string  `json:"region,omitempty"`   // 시/도
+	District *string  `json:"district,omitempty"` // 시/군/구
 	// StoreID는 사용자 입력으로 받지 않음 (보안 이슈)
 	// buy_gold 타입일 때 백엔드에서 자동으로 사용자의 매장 ID를 설정
 

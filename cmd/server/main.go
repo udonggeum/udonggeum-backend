@@ -79,6 +79,7 @@ func main() {
 	communityRepo := repository.NewCommunityRepository(dbConn)
 	reviewRepo := repository.NewReviewRepository(dbConn)
 	chatRepo := repository.NewChatRepository(dbConn)
+	notificationRepo := repository.NewNotificationRepository(dbConn)
 
 	authService := service.NewAuthService(
 		userRepo,
@@ -95,14 +96,15 @@ func main() {
 	goldPriceAPI := service.NewDefaultGoldPriceAPI(cfg.GoldPrice.APIURL, cfg.GoldPrice.APIKey)
 	goldPriceService := service.NewGoldPriceService(goldPriceRepo, goldPriceAPI)
 
-	communityService := service.NewCommunityService(communityRepo, userRepo)
+	// Initialize WebSocket hub (알림 서비스보다 먼저 생성)
+	hub := websocket.NewHub()
+	go hub.Run() // Hub를 별도 goroutine에서 실행
+
+	notificationService := service.NewNotificationService(notificationRepo, hub)
+	communityService := service.NewCommunityService(communityRepo, userRepo, notificationService)
 	reviewService := service.NewReviewService(reviewRepo, storeRepo)
 	tagService := service.NewTagService(dbConn)
 	aiService := service.NewAIService(cfg)
-
-	// Initialize WebSocket hub
-	hub := websocket.NewHub()
-	go hub.Run() // Hub를 별도 goroutine에서 실행
 
 	chatService := service.NewChatService(chatRepo, hub)
 
@@ -123,6 +125,7 @@ func main() {
 	uploadController := controller.NewUploadController(s3Storage)
 	tagController := controller.NewTagController(tagService)
 	chatController := controller.NewChatController(chatService, hub)
+	notificationController := controller.NewNotificationController(notificationService)
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
@@ -135,6 +138,7 @@ func main() {
 		uploadController,
 		tagController,
 		chatController,
+		notificationController,
 		authMiddleware,
 		cfg,
 	)

@@ -41,15 +41,17 @@ type CommunityService interface {
 }
 
 type communityService struct {
-	repo     repository.CommunityRepository
-	userRepo repository.UserRepository
+	repo                repository.CommunityRepository
+	userRepo            repository.UserRepository
+	notificationService NotificationService
 }
 
 // NewCommunityService 커뮤니티 서비스 생성자
-func NewCommunityService(repo repository.CommunityRepository, userRepo repository.UserRepository) CommunityService {
+func NewCommunityService(repo repository.CommunityRepository, userRepo repository.UserRepository, notificationService NotificationService) CommunityService {
 	return &communityService{
-		repo:     repo,
-		userRepo: userRepo,
+		repo:                repo,
+		userRepo:            userRepo,
+		notificationService: notificationService,
 	}
 }
 
@@ -91,11 +93,22 @@ func (s *communityService) CreatePost(req *model.CreatePostRequest, userID uint,
 		Weight:    req.Weight,
 		Price:     req.Price,
 		Location:  req.Location,
+		Region:    req.Region,
+		District:  req.District,
 		StoreID:   storeID,
 	}
 
 	if err := s.repo.CreatePost(post); err != nil {
 		return nil, err
+	}
+
+	// 금 판매글인 경우 알림 생성 (비동기로 처리, 실패해도 게시글 생성은 성공)
+	if s.notificationService != nil {
+		go func() {
+			if err := s.notificationService.CreateNewSellPostNotification(post); err != nil {
+				fmt.Printf("Failed to create notification for new sell post: %v\n", err)
+			}
+		}()
 	}
 
 	return post, nil
@@ -235,6 +248,15 @@ func (s *communityService) CreateComment(req *model.CreateCommentRequest, userID
 
 	if err := s.repo.CreateComment(comment); err != nil {
 		return nil, err
+	}
+
+	// 댓글 알림 생성 (비동기로 처리, 실패해도 댓글 생성은 성공)
+	if s.notificationService != nil {
+		go func() {
+			if err := s.notificationService.CreatePostCommentNotification(comment, post); err != nil {
+				fmt.Printf("Failed to create notification for comment: %v\n", err)
+			}
+		}()
 	}
 
 	return comment, nil
