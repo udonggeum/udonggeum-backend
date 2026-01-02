@@ -63,7 +63,7 @@ func (r *communityRepository) CreatePost(post *model.CommunityPost) error {
 	}
 
 	// User와 Store 정보를 Preload하여 다시 조회
-	if err := r.db.Preload("User").Preload("Store").First(post, post.ID).Error; err != nil {
+	if err := r.db.Preload("User.Store").Preload("Store").First(post, post.ID).Error; err != nil {
 		return err
 	}
 
@@ -77,15 +77,15 @@ func (r *communityRepository) GetPostByID(id uint, preload bool) (*model.Communi
 
 	if preload {
 		query = query.
-			Preload("User").
+			Preload("User.Store").
 			Preload("Store").
 			Preload("ReservedByUser").
 			Preload("Comments", func(db *gorm.DB) *gorm.DB {
 				return db.Where("parent_id IS NULL").Order("created_at ASC")
 			}).
-			Preload("Comments.User").
+			Preload("Comments.User.Store").
 			Preload("Comments.Replies").
-			Preload("Comments.Replies.User")
+			Preload("Comments.Replies.User.Store")
 	}
 
 	if err := query.First(&post).Error; err != nil {
@@ -102,7 +102,7 @@ func (r *communityRepository) GetPosts(query *model.PostListQuery) ([]model.Comm
 
 	// 기본 쿼리 구성
 	db := r.db.Model(&model.CommunityPost{}).
-		Preload("User").
+		Preload("User.Store").
 		Preload("Store")
 
 	// 필터 적용
@@ -261,7 +261,7 @@ func (r *communityRepository) CreateComment(comment *model.CommunityComment) err
 		}
 
 		// User 정보를 Preload하여 다시 조회
-		if err := tx.Preload("User").First(comment, comment.ID).Error; err != nil {
+		if err := tx.Preload("User.Store").First(comment, comment.ID).Error; err != nil {
 			return err
 		}
 
@@ -273,9 +273,9 @@ func (r *communityRepository) CreateComment(comment *model.CommunityComment) err
 func (r *communityRepository) GetCommentByID(id uint) (*model.CommunityComment, error) {
 	var comment model.CommunityComment
 	if err := r.db.
-		Preload("User").
+		Preload("User.Store").
 		Preload("Replies").
-		Preload("Replies.User").
+		Preload("Replies.User.Store").
 		First(&comment, id).Error; err != nil {
 		return nil, err
 	}
@@ -288,11 +288,11 @@ func (r *communityRepository) GetComments(query *model.CommentListQuery) ([]mode
 	var total int64
 
 	db := r.db.Model(&model.CommunityComment{}).
-		Preload("User").
+		Preload("User.Store").
 		Preload("Replies", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
-		Preload("Replies.User").
+		Preload("Replies.User.Store").
 		Where("post_id = ?", query.PostID)
 
 	// 최상위 댓글만 조회 또는 특정 부모 댓글의 대댓글만 조회
@@ -565,7 +565,7 @@ func (r *communityRepository) GetPostsWithImages(storeID uint, limit, offset int
 
 	// 게시글 조회
 	if err := query.
-		Preload("User").
+		Preload("User.Store").
 		Preload("Store").
 		Order("created_at DESC").
 		Limit(limit).
