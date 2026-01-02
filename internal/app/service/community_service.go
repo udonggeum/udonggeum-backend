@@ -182,6 +182,12 @@ func (s *communityService) UpdatePost(id uint, req *model.UpdatePostRequest, use
 	if req.Content != nil {
 		post.Content = *req.Content
 	}
+	if req.Category != nil {
+		post.Category = *req.Category
+	}
+	if req.Type != nil {
+		post.Type = *req.Type
+	}
 	if req.Status != nil {
 		post.Status = *req.Status
 	}
