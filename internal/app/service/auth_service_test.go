@@ -64,6 +64,7 @@ func TestAuthService_Register(t *testing.T) {
 				tt.email,
 				tt.password,
 				tt.userName,
+				"", // nickname (auto-generated)
 				tt.phone,
 			)
 
@@ -91,7 +92,7 @@ func TestAuthService_Login(t *testing.T) {
 	// Register a user first
 	email := "test@example.com"
 	password := "password123"
-	_, _, err := authService.Register(email, password, "Test User", "010-1234-5678")
+	_, _, err := authService.Register(email, password, "Test User", "", "010-1234-5678")
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -148,6 +149,7 @@ func TestAuthService_GetUserByID(t *testing.T) {
 		"test@example.com",
 		"password123",
 		"Test User",
+		"", // nickname (auto-generated)
 		"010-1234-5678",
 	)
 	require.NoError(t, err)
@@ -194,6 +196,7 @@ func TestAuthService_PasswordSecurity(t *testing.T) {
 		"test@example.com",
 		password,
 		"Test User",
+		"", // nickname (auto-generated)
 		"010-1234-5678",
 	)
 	require.NoError(t, err)
@@ -210,6 +213,7 @@ func TestAuthService_TokenGeneration(t *testing.T) {
 		"test@example.com",
 		"password123",
 		"Test User",
+		"", // nickname (auto-generated)
 		"010-1234-5678",
 	)
 	require.NoError(t, err)

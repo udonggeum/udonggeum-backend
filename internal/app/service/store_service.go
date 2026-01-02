@@ -221,9 +221,9 @@ func (s *storeService) CreateStore(store *model.Store) (*model.Store, error) {
 		return nil, err
 	}
 
-	// Update user's nickname to store name for admin users
+	// Update user's nickname to store name (매장 등록 시 무조건 닉네임 변경)
 	user, err := s.userRepo.FindByID(store.UserID)
-	if err == nil && user.Role == model.RoleAdmin {
+	if err == nil {
 		user.Nickname = store.Name
 		if err := s.userRepo.Update(user); err != nil {
 			logger.Warn("Failed to update user nickname after store creation", map[string]interface{}{
@@ -234,7 +234,7 @@ func (s *storeService) CreateStore(store *model.Store) (*model.Store, error) {
 			// Don't fail the entire operation if nickname update fails
 		} else {
 			logger.Info("User nickname updated to store name", map[string]interface{}{
-				"user_id": store.UserID,
+				"user_id":  store.UserID,
 				"nickname": store.Name,
 			})
 		}

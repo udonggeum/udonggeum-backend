@@ -33,7 +33,7 @@ var (
 )
 
 type AuthService interface {
-	Register(email, password, name, phone string) (*model.User, *util.TokenPair, error)
+	Register(email, password, name, nickname, phone string) (*model.User, *util.TokenPair, error)
 	Login(email, password string) (*model.User, *util.TokenPair, error)
 	GetUserByID(id uint) (*model.User, error)
 	UpdateProfile(userID uint, name, phone, nickname, address, profileImage string) (*model.User, error)
@@ -78,10 +78,11 @@ func NewAuthService(
 	}
 }
 
-func (s *authService) Register(email, password, name, phone string) (*model.User, *util.TokenPair, error) {
+func (s *authService) Register(email, password, name, nickname, phone string) (*model.User, *util.TokenPair, error) {
 	logger.Info("Attempting user registration", map[string]interface{}{
-		"email": email,
-		"name":  name,
+		"email":    email,
+		"name":     name,
+		"nickname": nickname,
 	})
 
 	// Check if user already exists
@@ -108,13 +109,39 @@ func (s *authService) Register(email, password, name, phone string) (*model.User
 		return nil, nil, err
 	}
 
-	// Generate unique nickname
-	nickname, err := s.generateUniqueNickname()
-	if err != nil {
-		logger.Error("Failed to generate unique nickname", err, map[string]interface{}{
-			"email": email,
+	// Use provided nickname or generate unique one
+	var finalNickname string
+	if nickname == "" {
+		generatedNickname, err := s.generateUniqueNickname()
+		if err != nil {
+			logger.Error("Failed to generate unique nickname", err, map[string]interface{}{
+				"email": email,
+			})
+			return nil, nil, err
+		}
+		finalNickname = generatedNickname
+		logger.Debug("Generated unique nickname", map[string]interface{}{
+			"nickname": finalNickname,
 		})
-		return nil, nil, err
+	} else {
+		// Check if provided nickname already exists
+		existingNicknameUser, err := s.userRepo.FindByNickname(nickname)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Error("Failed to check existing nickname", err, map[string]interface{}{
+				"nickname": nickname,
+			})
+			return nil, nil, err
+		}
+		if existingNicknameUser != nil {
+			logger.Warn("Registration failed: nickname already exists", map[string]interface{}{
+				"nickname": nickname,
+			})
+			return nil, nil, ErrNicknameAlreadyExists
+		}
+		finalNickname = nickname
+		logger.Debug("Using provided nickname", map[string]interface{}{
+			"nickname": finalNickname,
+		})
 	}
 
 	// Create user
@@ -122,7 +149,7 @@ func (s *authService) Register(email, password, name, phone string) (*model.User
 		Email:        email,
 		PasswordHash: hashedPassword,
 		Name:         name,
-		Nickname:     nickname,
+		Nickname:     finalNickname,
 		Phone:        phone,
 		Role:         model.RoleUser,
 	}

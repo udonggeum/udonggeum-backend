@@ -144,14 +144,16 @@ type CreatePostRequest struct {
 
 // UpdatePostRequest 게시글 수정 요청
 type UpdatePostRequest struct {
-	Title     *string    `json:"title,omitempty" binding:"omitempty,min=2,max=200"`
-	Content   *string    `json:"content,omitempty" binding:"omitempty,min=10"`
-	Status    *PostStatus `json:"status,omitempty" binding:"omitempty,oneof=active inactive"`
-	GoldType  *string    `json:"gold_type,omitempty"`
-	Weight    *float64   `json:"weight,omitempty"`
-	Price     *int64     `json:"price,omitempty"`
-	Location  *string    `json:"location,omitempty"`
-	ImageURLs []string   `json:"image_urls,omitempty"`
+	Title     *string       `json:"title,omitempty" binding:"omitempty,min=2,max=200"`
+	Content   *string       `json:"content,omitempty" binding:"omitempty,min=10"`
+	Category  *PostCategory `json:"category,omitempty" binding:"omitempty,oneof=gold_trade gold_news qna"`
+	Type      *PostType     `json:"type,omitempty"`
+	Status    *PostStatus   `json:"status,omitempty" binding:"omitempty,oneof=active inactive"`
+	GoldType  *string       `json:"gold_type,omitempty"`
+	Weight    *float64      `json:"weight,omitempty"`
+	Price     *int64        `json:"price,omitempty"`
+	Location  *string       `json:"location,omitempty"`
+	ImageURLs []string      `json:"image_urls,omitempty"`
 }
 
 // PostListQuery 게시글 목록 조회 쿼리
@@ -163,6 +165,15 @@ type PostListQuery struct {
 	StoreID   *uint         `form:"store_id"`
 	IsAnswered *bool        `form:"is_answered"`
 	Search    *string       `form:"search"` // 제목+내용 검색
+
+	// 지역 필터 (다중 선택 지원)
+	Regions   []string `form:"regions"`   // 시/도 목록
+	Districts []string `form:"districts"` // 시/군/구 목록
+
+	// 하위 호환성을 위한 단일 지역 필터 (deprecated)
+	Region   *string `form:"region"`   // 시/도
+	District *string `form:"district"` // 시/군/구
+
 	Page      int           `form:"page" binding:"min=1"`
 	PageSize  int           `form:"page_size" binding:"min=1,max=100"`
 	SortBy    string        `form:"sort_by" binding:"omitempty,oneof=created_at view_count like_count comment_count"`

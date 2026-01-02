@@ -26,6 +26,7 @@ type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=6"`
 	Name     string `json:"name" binding:"required"`
+	Nickname string `json:"nickname"`
 	Phone    string `json:"phone"`
 }
 
@@ -81,11 +82,12 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 	}
 
 	log.Debug("Processing registration", map[string]interface{}{
-		"email": req.Email,
-		"name":  req.Name,
+		"email":    req.Email,
+		"name":     req.Name,
+		"nickname": req.Nickname,
 	})
 
-	user, tokens, err := ctrl.authService.Register(req.Email, req.Password, req.Name, req.Phone)
+	user, tokens, err := ctrl.authService.Register(req.Email, req.Password, req.Name, req.Nickname, req.Phone)
 	if err != nil {
 		if errors.Is(err, service.ErrEmailAlreadyExists) {
 			log.Warn("Registration failed: email already exists", map[string]interface{}{

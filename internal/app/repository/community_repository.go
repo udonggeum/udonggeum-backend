@@ -132,6 +132,64 @@ func (r *communityRepository) GetPosts(query *model.PostListQuery) ([]model.Comm
 		db = db.Where("title ILIKE ? OR content ILIKE ?", searchTerm, searchTerm)
 	}
 
+	// 지역 필터 (다중 선택 지원)
+	// 하위 호환성: 단일 지역 필터 (Region, District)
+	if query.Region != nil && *query.Region != "" {
+		if query.District != nil && *query.District != "" {
+			db = db.Where("region = ? AND district = ?", *query.Region, *query.District)
+		} else {
+			db = db.Where("region = ?", *query.Region)
+		}
+	}
+
+	// 다중 지역 필터 (Regions, Districts)
+	// 프론트엔드에서 [{region: "서울", district: "강남구"}, {region: "경기"}] 형태로 전송
+	if len(query.Regions) > 0 || len(query.Districts) > 0 {
+		// 지역 조건 구성
+		locationConditions := []string{}
+		locationArgs := []interface{}{}
+
+		// Regions와 Districts를 매칭해서 OR 조건 생성
+		maxLen := len(query.Regions)
+		if len(query.Districts) > maxLen {
+			maxLen = len(query.Districts)
+		}
+
+		for i := 0; i < maxLen; i++ {
+			var region, district string
+
+			if i < len(query.Regions) {
+				region = query.Regions[i]
+			}
+			if i < len(query.Districts) {
+				district = query.Districts[i]
+			}
+
+			if region != "" {
+				if district != "" {
+					// 지역 + 구/군 매칭
+					locationConditions = append(locationConditions, "(region = ? AND district = ?)")
+					locationArgs = append(locationArgs, region, district)
+				} else {
+					// 지역 전체 매칭 (해당 지역의 모든 구/군)
+					locationConditions = append(locationConditions, "region = ?")
+					locationArgs = append(locationArgs, region)
+				}
+			}
+		}
+
+		// OR 조건으로 결합
+		if len(locationConditions) > 0 {
+			locationQuery := "(" + locationConditions[0]
+			for i := 1; i < len(locationConditions); i++ {
+				locationQuery += " OR " + locationConditions[i]
+			}
+			locationQuery += ")"
+
+			db = db.Where(locationQuery, locationArgs...)
+		}
+	}
+
 	// 총 개수 조회
 	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err
