@@ -1,6 +1,9 @@
 package model
 
 import (
+	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -54,10 +57,11 @@ type CommunityPost struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
 	// 게시글 기본 정보
-	Title    string       `gorm:"type:varchar(200);not null" json:"title"`      // 제목
-	Content  string       `gorm:"type:text;not null" json:"content"`            // 내용
-	Category PostCategory `gorm:"type:varchar(20);not null" json:"category"`    // 카테고리
-	Type     PostType     `gorm:"type:varchar(20);not null" json:"type"`        // 게시글 타입
+	Title    string       `gorm:"type:varchar(200);not null" json:"title"`         // 제목
+	Slug     string       `gorm:"uniqueIndex;not null" json:"slug"`                // URL용 고유 식별자 (SEO)
+	Content  string       `gorm:"type:text;not null" json:"content"`               // 내용
+	Category PostCategory `gorm:"type:varchar(20);not null" json:"category"`       // 카테고리
+	Type     PostType     `gorm:"type:varchar(20);not null" json:"type"`           // 게시글 타입
 	Status   PostStatus   `gorm:"type:varchar(20);default:'active'" json:"status"` // 상태
 
 	// 작성자 정보
@@ -195,4 +199,91 @@ type GenerateContentRequest struct {
 type GenerateContentResponse struct {
 	Content     string `json:"content"`
 	GeneratedAt string `json:"generated_at,omitempty"`
+}
+
+// generatePostSlug는 게시글 제목으로 URL용 slug를 생성합니다
+func generatePostSlug(title string) string {
+	// 제목을 최대 50자로 제한
+	if len([]rune(title)) > 50 {
+		title = string([]rune(title)[:50])
+	}
+
+	slug := title
+
+	// 특수문자 제거 (한글, 영문, 숫자, 하이픈만 허용)
+	reg := regexp.MustCompile(`[^\p{L}\p{N}-]+`)
+	slug = reg.ReplaceAllString(slug, "-")
+
+	// 연속된 하이픈을 하나로
+	reg = regexp.MustCompile(`-+`)
+	slug = reg.ReplaceAllString(slug, "-")
+
+	// 앞뒤 하이픈 제거
+	slug = strings.Trim(slug, "-")
+
+	// 소문자로 변환 (영문만)
+	slug = strings.ToLower(slug)
+
+	return slug
+}
+
+// BeforeCreate는 게시글 생성 전에 slug를 자동 생성합니다
+func (p *CommunityPost) BeforeCreate(tx *gorm.DB) error {
+	if p.Slug == "" {
+		baseSlug := generatePostSlug(p.Title)
+		slug := baseSlug
+
+		// 중복 체크 및 숫자 붙이기
+		counter := 1
+		for {
+			var count int64
+			if err := tx.Model(&CommunityPost{}).Where("slug = ?", slug).Count(&count).Error; err != nil {
+				return err
+			}
+
+			if count == 0 {
+				break
+			}
+
+			counter++
+			slug = fmt.Sprintf("%s-%d", baseSlug, counter)
+		}
+
+		p.Slug = slug
+	}
+	return nil
+}
+
+// BeforeUpdate는 게시글 수정 시 제목이 변경되면 slug를 재생성합니다
+func (p *CommunityPost) BeforeUpdate(tx *gorm.DB) error {
+	// 기존 게시글 정보 조회
+	var oldPost CommunityPost
+	if err := tx.First(&oldPost, p.ID).Error; err != nil {
+		return err
+	}
+
+	// 제목이 변경되었는지 확인
+	if p.Title != oldPost.Title {
+		baseSlug := generatePostSlug(p.Title)
+		slug := baseSlug
+
+		// 중복 체크 (자기 자신은 제외)
+		counter := 1
+		for {
+			var count int64
+			if err := tx.Model(&CommunityPost{}).Where("slug = ? AND id != ?", slug, p.ID).Count(&count).Error; err != nil {
+				return err
+			}
+
+			if count == 0 {
+				break
+			}
+
+			counter++
+			slug = fmt.Sprintf("%s-%d", baseSlug, counter)
+		}
+
+		p.Slug = slug
+	}
+	return nil
 }
