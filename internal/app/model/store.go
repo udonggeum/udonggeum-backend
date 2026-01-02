@@ -43,7 +43,7 @@ type Store struct {
 	UserID      uint           `gorm:"not null;index" json:"user_id"` // 매장 소유자 ID
 	User        User           `gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT" json:"owner,omitempty"`
 	Name        string         `gorm:"not null" json:"name"`                 // 매장명
-	Slug        string         `gorm:"uniqueIndex;not null" json:"slug"`     // URL용 고유 식별자 (SEO)
+	Slug        string         `gorm:"uniqueIndex" json:"slug"`              // URL용 고유 식별자 (SEO)
 	Region      string         `gorm:"index;not null" json:"region"`         // 시·도
 	District    string         `gorm:"index;not null" json:"district"`       // 구·군
 	Address     string         `gorm:"type:text" json:"address"`             // 상세 주소

@@ -58,7 +58,7 @@ type CommunityPost struct {
 
 	// 게시글 기본 정보
 	Title    string       `gorm:"type:varchar(200);not null" json:"title"`         // 제목
-	Slug     string       `gorm:"uniqueIndex;not null" json:"slug"`                // URL용 고유 식별자 (SEO)
+	Slug     string       `gorm:"uniqueIndex" json:"slug"`                         // URL용 고유 식별자 (SEO)
 	Content  string       `gorm:"type:text;not null" json:"content"`               // 내용
 	Category PostCategory `gorm:"type:varchar(20);not null" json:"category"`       // 카테고리
 	Type     PostType     `gorm:"type:varchar(20);not null" json:"type"`           // 게시글 타입
