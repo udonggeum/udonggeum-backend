@@ -475,12 +475,37 @@ func (ctrl *AuthController) RefreshToken(c *gin.Context) {
 
 	tokens, err := ctrl.authService.RefreshToken(req.RefreshToken)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidToken) || errors.Is(err, service.ErrExpiredToken) || errors.Is(err, service.ErrTokenRevoked) {
-			log.Warn("Token refresh failed: invalid, expired, or revoked token", map[string]interface{}{
+		// 에러를 세분화하여 프론트엔드가 적절히 처리할 수 있도록 함
+		if errors.Is(err, service.ErrTokenRevoked) {
+			log.Warn("Token refresh failed: token revoked", map[string]interface{}{
 				"error": err.Error(),
 			})
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid or expired refresh token",
+				"error":         "refresh_token_revoked",
+				"message":       "This refresh token has been revoked. Please login again.",
+				"token_expired": true,
+			})
+			return
+		}
+		if errors.Is(err, service.ErrExpiredToken) {
+			log.Warn("Token refresh failed: token expired", map[string]interface{}{
+				"error": err.Error(),
+			})
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":         "refresh_token_expired",
+				"message":       "Your refresh token has expired (7 days). Please login again.",
+				"token_expired": true,
+			})
+			return
+		}
+		if errors.Is(err, service.ErrInvalidToken) {
+			log.Warn("Token refresh failed: invalid token", map[string]interface{}{
+				"error": err.Error(),
+			})
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":         "invalid_refresh_token",
+				"message":       "Invalid refresh token. Please login again.",
+				"token_expired": true,
 			})
 			return
 		}

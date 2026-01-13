@@ -343,7 +343,7 @@ func (ctrl *ChatController) WebSocketHandler(c *gin.Context) {
 		Hub:           ctrl.hub,
 		Conn:          &ws.Conn{Conn: conn},
 		UserID:        userID,
-		Send:          make(chan []byte, 256),
+		Send:          make(chan []byte, 2048), // 256 → 2048 (8배 증가, 네트워크 느린 클라이언트 대응)
 		ChatRooms:     make(map[uint]bool),
 		LastResetTime: time.Now(),
 	}

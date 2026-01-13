@@ -10,7 +10,8 @@ import (
 
 const (
 	// Rate limiting: 최대 메시지 수 (1초당)
-	maxMessagesPerSecond = 10
+	// typing_start/stop 이벤트도 포함되므로 여유있게 설정
+	maxMessagesPerSecond = 30 // 10 → 30 (빠른 타이핑 및 연속 메시지 대응)
 )
 
 // ClientMessage 클라이언트로부터 받은 메시지
@@ -64,9 +65,9 @@ func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[uint][]*Client),
 		rooms:      make(map[uint]map[uint]bool),
-		register:   make(chan *Client, 256),
-		unregister: make(chan *Client, 256),
-		broadcast:  make(chan *BroadcastMessage, 1024),
+		register:   make(chan *Client, 1024),            // 256 → 1024 (동시 연결 폭증 대응)
+		unregister: make(chan *Client, 1024),            // 256 → 1024 (동시 연결 해제 대응)
+		broadcast:  make(chan *BroadcastMessage, 4096),  // 1024 → 4096 (트래픽 폭증 대응)
 	}
 }
 
@@ -137,12 +138,21 @@ func (h *Hub) Run() {
 							select {
 							case client.Send <- message.Message:
 								// 전송 성공
-							default:
-								// Send 채널이 막혀있음 - 비동기로 정리
-								go h.Unregister(client)
-								logger.Warn("Client send buffer full, disconnecting", map[string]interface{}{
-									"user_id": userID,
+							case <-time.After(100 * time.Millisecond):
+								// 100ms 대기 후에도 전송 불가 - 메시지 드롭 (연결은 유지)
+								// 네트워크 일시적 지연은 허용하되, 지속적 문제는 클라이언트 측 재연결로 해결
+								logger.Warn("Client send buffer full, message dropped", map[string]interface{}{
+									"user_id":     userID,
+									"buffer_size": len(client.Send),
 								})
+								// 버퍼가 거의 가득 찬 경우에만 연결 끊기 (>90%)
+								if len(client.Send) > 1843 { // 2048 * 0.9
+									go h.Unregister(client)
+									logger.Error("Client consistently slow, disconnecting", map[string]interface{}{
+										"user_id":     userID,
+										"buffer_size": len(client.Send),
+									})
+								}
 							}
 						}
 					}
@@ -335,21 +345,34 @@ func (h *Hub) SendNotificationToUser(userID uint, notification interface{}) erro
 
 	// 멀티 디바이스: 모든 세션에 전송
 	if clientList, ok := h.clients[userID]; ok {
+		sentCount := 0
 		for _, client := range clientList {
 			select {
 			case client.Send <- data:
 				// 전송 성공
-			default:
-				// Send 채널이 막혀있음
-				logger.Warn("Client send buffer full for notification", map[string]interface{}{
-					"user_id": userID,
+				sentCount++
+			case <-time.After(100 * time.Millisecond):
+				// 100ms 대기 후에도 전송 불가 - 알림 드롭
+				logger.Warn("Client send buffer full for notification, dropped", map[string]interface{}{
+					"user_id":     userID,
+					"buffer_size": len(client.Send),
 				})
+				// 버퍼가 거의 가득 찬 경우에만 연결 끊기
+				if len(client.Send) > 1843 { // 2048 * 0.9
+					go h.Unregister(client)
+					logger.Error("Client consistently slow, disconnecting", map[string]interface{}{
+						"user_id": userID,
+					})
+				}
 			}
 		}
-		logger.Info("Notification sent to user", map[string]interface{}{
-			"user_id": userID,
-			"devices": len(clientList),
-		})
+		if sentCount > 0 {
+			logger.Info("Notification sent to user", map[string]interface{}{
+				"user_id":       userID,
+				"devices":       len(clientList),
+				"sent_devices":  sentCount,
+			})
+		}
 	} else {
 		logger.Info("User not connected, notification will be shown on next login", map[string]interface{}{
 			"user_id": userID,

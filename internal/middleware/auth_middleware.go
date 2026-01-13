@@ -77,15 +77,15 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 			// 토큰 만료 에러인 경우 명확히 표시
 			if err == util.ErrExpiredToken {
 				c.JSON(http.StatusUnauthorized, gin.H{
-					"error":         "token has expired",
+					"error":         "Token expired",
 					"token_expired": true,
-					"message":       "Please refresh your access token",
+					"message":       "Your session has expired. Please login again.",
 				})
 			} else {
 				c.JSON(http.StatusUnauthorized, gin.H{
-					"error":         "invalid token",
+					"error":         "Invalid token",
 					"token_expired": false,
-					"message":       "Invalid authentication token",
+					"message":       "Invalid authentication token. Please login again.",
 				})
 			}
 			c.Abort()
