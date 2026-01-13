@@ -112,6 +112,12 @@ func (r *Router) Setup() *gin.Engine {
 				r.storeController.DeleteStore,
 			)
 
+			// Store ownership claim (1단계 검증)
+			stores.POST("/:id/claim",
+				r.authMiddleware.Authenticate(),
+				r.storeController.ClaimStore,
+			)
+
 			// Store like
 			stores.POST("/:id/like",
 				r.authMiddleware.Authenticate(),
@@ -130,6 +136,13 @@ func (r *Router) Setup() *gin.Engine {
 
 			// Store gallery
 			stores.GET("/:id/gallery", r.reviewController.GetStoreGallery)
+
+			// Store verification (2단계 인증 신청)
+			stores.POST("/verification",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.storeController.SubmitVerification,
+			)
 		}
 
 		// Users routes
@@ -152,6 +165,13 @@ func (r *Router) Setup() *gin.Engine {
 				r.authMiddleware.Authenticate(),
 				r.authMiddleware.RequireRole("admin"),
 				r.storeController.UpdateMyStore,
+			)
+
+			// Store verification status (인증 상태 조회)
+			users.GET("/me/store/verification",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.storeController.GetMyVerificationStatus,
 			)
 
 			// Notification settings
@@ -365,6 +385,16 @@ func (r *Router) Setup() *gin.Engine {
 					r.communityController.ToggleCommentLike,
 				)
 			}
+		}
+
+		// Admin routes (관리자 전용)
+		admin := v1.Group("/admin")
+		admin.Use(r.authMiddleware.Authenticate())
+		admin.Use(r.authMiddleware.RequireRole("admin"))
+		{
+			// Store verifications (매장 인증 관리)
+			admin.GET("/verifications", r.storeController.ListPendingVerifications)
+			admin.PUT("/verifications/:id", r.storeController.ReviewVerification)
 		}
 	}
 

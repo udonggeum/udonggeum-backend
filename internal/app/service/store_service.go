@@ -575,3 +575,193 @@ func (s *storeService) PromoteUserToAdmin(userID uint) error {
 	})
 	return nil
 }
+
+// UpdateStoreOwnership updates store ownership information (for claiming stores)
+func (s *storeService) UpdateStoreOwnership(store *model.Store) (*model.Store, error) {
+	logger.Info("Updating store ownership", map[string]interface{}{
+		"store_id": store.ID,
+		"user_id":  store.UserID,
+	})
+
+	// Update store with new ownership information
+	if err := s.storeRepo.Update(store); err != nil {
+		logger.Error("Failed to update store ownership", err, map[string]interface{}{
+			"store_id": store.ID,
+		})
+		return nil, err
+	}
+
+	// Create business registration if provided
+	if store.BusinessRegistration != nil {
+		if err := s.storeRepo.CreateBusinessRegistration(store.BusinessRegistration); err != nil {
+			logger.Error("Failed to create business registration for claimed store", err, map[string]interface{}{
+				"store_id": store.ID,
+			})
+			return nil, err
+		}
+	}
+
+	logger.Info("Store ownership updated successfully", map[string]interface{}{
+		"store_id":   store.ID,
+		"user_id":    store.UserID,
+		"is_managed": store.IsManaged,
+	})
+
+	// Reload store with all associations
+	updated, err := s.storeRepo.FindByID(store.ID, true)
+	if err != nil {
+		logger.Error("Failed to reload claimed store", err, map[string]interface{}{
+			"store_id": store.ID,
+		})
+		return nil, err
+	}
+
+	return updated, nil
+}
+
+// GetStoreByUserID gets a store by user ID
+func (s *storeService) GetStoreByUserID(userID uint) (*model.Store, error) {
+	logger.Info("Getting store by user ID", map[string]interface{}{
+		"user_id": userID,
+	})
+
+	store, err := s.storeRepo.FindByUserID(userID)
+	if err != nil {
+		logger.Error("Failed to find store by user ID", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		return nil, err
+	}
+
+	return store, nil
+}
+
+// CreateVerification creates a new store verification request
+func (s *storeService) CreateVerification(verification *model.StoreVerification) (*model.StoreVerification, error) {
+	logger.Info("Creating verification", map[string]interface{}{
+		"store_id": verification.StoreID,
+	})
+
+	if err := s.storeRepo.CreateVerification(verification); err != nil {
+		logger.Error("Failed to create verification", err, map[string]interface{}{
+			"store_id": verification.StoreID,
+		})
+		return nil, err
+	}
+
+	logger.Info("Verification created successfully", map[string]interface{}{
+		"verification_id": verification.ID,
+		"store_id":        verification.StoreID,
+	})
+
+	return verification, nil
+}
+
+// GetVerificationByStoreID gets verification by store ID
+func (s *storeService) GetVerificationByStoreID(storeID uint) (*model.StoreVerification, error) {
+	logger.Debug("Getting verification by store ID", map[string]interface{}{
+		"store_id": storeID,
+	})
+
+	verification, err := s.storeRepo.FindVerificationByStoreID(storeID)
+	if err != nil {
+		logger.Debug("Verification not found for store", map[string]interface{}{
+			"store_id": storeID,
+		})
+		return nil, err
+	}
+
+	return verification, nil
+}
+
+// GetVerificationByID gets verification by ID
+func (s *storeService) GetVerificationByID(verificationID uint) (*model.StoreVerification, error) {
+	logger.Debug("Getting verification by ID", map[string]interface{}{
+		"verification_id": verificationID,
+	})
+
+	verification, err := s.storeRepo.FindVerificationByID(verificationID)
+	if err != nil {
+		logger.Error("Verification not found", err, map[string]interface{}{
+			"verification_id": verificationID,
+		})
+		return nil, err
+	}
+
+	return verification, nil
+}
+
+// ListVerificationsByStatus lists verifications by status
+func (s *storeService) ListVerificationsByStatus(status string) ([]*model.StoreVerification, error) {
+	logger.Info("Listing verifications by status", map[string]interface{}{
+		"status": status,
+	})
+
+	verifications, err := s.storeRepo.FindVerificationsByStatus(status)
+	if err != nil {
+		logger.Error("Failed to list verifications", err, map[string]interface{}{
+			"status": status,
+		})
+		return nil, err
+	}
+
+	logger.Info("Verifications listed", map[string]interface{}{
+		"status": status,
+		"count":  len(verifications),
+	})
+
+	return verifications, nil
+}
+
+// ApproveStoreVerification approves a store verification (sets is_verified to true)
+func (s *storeService) ApproveStoreVerification(storeID uint, verifiedAt *time.Time) error {
+	logger.Info("Approving store verification", map[string]interface{}{
+		"store_id": storeID,
+	})
+
+	store, err := s.storeRepo.FindByID(storeID, false)
+	if err != nil {
+		logger.Error("Store not found for verification approval", err, map[string]interface{}{
+			"store_id": storeID,
+		})
+		return err
+	}
+
+	store.IsVerified = true
+	store.VerifiedAt = verifiedAt
+
+	if err := s.storeRepo.Update(store); err != nil {
+		logger.Error("Failed to update store verification status", err, map[string]interface{}{
+			"store_id": storeID,
+		})
+		return err
+	}
+
+	logger.Info("Store verification approved", map[string]interface{}{
+		"store_id": storeID,
+	})
+
+	return nil
+}
+
+// UpdateVerification updates a verification record
+func (s *storeService) UpdateVerification(verification *model.StoreVerification) error {
+	logger.Info("Updating verification", map[string]interface{}{
+		"verification_id": verification.ID,
+		"status":          verification.Status,
+	})
+
+	if err := s.storeRepo.UpdateVerification(verification); err != nil {
+		logger.Error("Failed to update verification", err, map[string]interface{}{
+			"verification_id": verification.ID,
+		})
+		return err
+	}
+
+	logger.Info("Verification updated successfully", map[string]interface{}{
+		"verification_id": verification.ID,
+		"status":          verification.Status,
+	})
+
+	return nil
+}

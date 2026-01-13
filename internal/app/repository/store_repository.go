@@ -376,3 +376,118 @@ func (r *storeRepository) GetUserLikedStoreIDs(userID uint) ([]uint, error) {
 	})
 	return storeIDs, nil
 }
+
+// CreateBusinessRegistration creates a new business registration
+func (r *storeRepository) CreateBusinessRegistration(businessReg *model.BusinessRegistration) error {
+	logger.Info("Creating business registration", map[string]interface{}{
+		"store_id":        businessReg.StoreID,
+		"business_number": businessReg.BusinessNumber,
+	})
+
+	if err := r.db.Create(businessReg).Error; err != nil {
+		logger.Error("Failed to create business registration", err, map[string]interface{}{
+			"store_id": businessReg.StoreID,
+		})
+		return err
+	}
+
+	logger.Info("Business registration created successfully", map[string]interface{}{
+		"store_id": businessReg.StoreID,
+	})
+	return nil
+}
+
+// FindByUserID finds a store by user ID
+func (r *storeRepository) FindByUserID(userID uint) (*model.Store, error) {
+	var store model.Store
+	if err := r.db.
+		Preload("BusinessRegistration").
+		Preload("Tags").
+		Preload("Verification").
+		Where("user_id = ?", userID).
+		First(&store).Error; err != nil {
+		return nil, err
+	}
+	return &store, nil
+}
+
+// CreateVerification creates a new store verification request
+func (r *storeRepository) CreateVerification(verification *model.StoreVerification) error {
+	logger.Info("Creating verification", map[string]interface{}{
+		"store_id": verification.StoreID,
+	})
+
+	if err := r.db.Create(verification).Error; err != nil {
+		logger.Error("Failed to create verification", err, map[string]interface{}{
+			"store_id": verification.StoreID,
+		})
+		return err
+	}
+
+	logger.Info("Verification created successfully", map[string]interface{}{
+		"verification_id": verification.ID,
+		"store_id":        verification.StoreID,
+	})
+	return nil
+}
+
+// FindVerificationByStoreID finds verification by store ID (latest one)
+func (r *storeRepository) FindVerificationByStoreID(storeID uint) (*model.StoreVerification, error) {
+	var verification model.StoreVerification
+	if err := r.db.
+		Where("store_id = ?", storeID).
+		Order("created_at DESC").
+		First(&verification).Error; err != nil {
+		return nil, err
+	}
+	return &verification, nil
+}
+
+// FindVerificationByID finds verification by ID
+func (r *storeRepository) FindVerificationByID(verificationID uint) (*model.StoreVerification, error) {
+	var verification model.StoreVerification
+	if err := r.db.
+		Preload("Store").
+		First(&verification, verificationID).Error; err != nil {
+		return nil, err
+	}
+	return &verification, nil
+}
+
+// FindVerificationsByStatus finds verifications by status
+func (r *storeRepository) FindVerificationsByStatus(status string) ([]*model.StoreVerification, error) {
+	var verifications []*model.StoreVerification
+	query := r.db.Preload("Store").Where("status = ?", status).Order("created_at DESC")
+
+	if err := query.Find(&verifications).Error; err != nil {
+		logger.Error("Failed to find verifications by status", err, map[string]interface{}{
+			"status": status,
+		})
+		return nil, err
+	}
+
+	logger.Debug("Verifications found by status", map[string]interface{}{
+		"status": status,
+		"count":  len(verifications),
+	})
+	return verifications, nil
+}
+
+// UpdateVerification updates a verification record
+func (r *storeRepository) UpdateVerification(verification *model.StoreVerification) error {
+	logger.Info("Updating verification", map[string]interface{}{
+		"verification_id": verification.ID,
+	})
+
+	if err := r.db.Save(verification).Error; err != nil {
+		logger.Error("Failed to update verification", err, map[string]interface{}{
+			"verification_id": verification.ID,
+		})
+		return err
+	}
+
+	logger.Info("Verification updated successfully", map[string]interface{}{
+		"verification_id": verification.ID,
+	})
+	return nil
+}

@@ -822,3 +822,496 @@ func (ctrl *StoreController) UpdateMyStore(c *gin.Context) {
 		"store":   updated,
 	})
 }
+
+// ClaimStoreRequest 매장 소유권 신청 요청
+type ClaimStoreRequest struct {
+	BusinessNumber     string `json:"business_number" binding:"required"`      // 사업자등록번호 (필수)
+	BusinessStartDate  string `json:"business_start_date" binding:"required"`  // 개업일자 (필수)
+	RepresentativeName string `json:"representative_name" binding:"required"`  // 대표자명 (필수)
+}
+
+// ClaimStore 기존 매장에 대한 소유권 신청 (1단계 검증)
+func (ctrl *StoreController) ClaimStore(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		log.Warn("User ID not found in context for store claim", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Unauthorized",
+		})
+		return
+	}
+
+	// 휴대폰 인증 확인
+	user, err := ctrl.authService.GetUserByID(userID)
+	if err != nil {
+		log.Error("Failed to get user", err, map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to verify user",
+		})
+		return
+	}
+
+	if !user.PhoneVerified {
+		log.Warn("Phone not verified for store claim", map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "휴대폰 인증이 필요합니다. 마이페이지에서 휴대폰 인증을 완료해주세요.",
+		})
+		return
+	}
+
+	// 매장 ID 파싱
+	idStr := c.Param("id")
+	storeID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		log.Warn("Invalid store ID format for claim", map[string]interface{}{
+			"store_id": idStr,
+			"error":    err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid store ID",
+		})
+		return
+	}
+
+	var req ClaimStoreRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid store claim request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// 1. 매장 존재 확인 및 이미 관리 중인지 확인
+	store, err := ctrl.storeService.GetStoreByID(uint(storeID), nil, nil)
+	if err != nil {
+		log.Warn("Store not found for claim", map[string]interface{}{
+			"store_id": storeID,
+		})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "매장을 찾을 수 없습니다",
+		})
+		return
+	}
+
+	if store.IsManaged {
+		log.Warn("Store already managed", map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  store.UserID,
+		})
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "이미 관리 중인 매장입니다",
+		})
+		return
+	}
+
+	// 2. 사업자 등록번호 진위 확인
+	log.Info("Verifying business number for claim", map[string]interface{}{
+		"business_number": req.BusinessNumber,
+		"store_id":        storeID,
+		"user_id":         userID,
+	})
+
+	verificationResult, err := util.VerifyBusinessNumber(
+		req.BusinessNumber,
+		req.BusinessStartDate,
+		req.RepresentativeName,
+	)
+	if err != nil {
+		log.Error("Business verification API error", err, map[string]interface{}{
+			"business_number": req.BusinessNumber,
+			"user_id":         userID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "사업자 인증 중 오류가 발생했습니다",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	if !verificationResult.IsValid {
+		log.Warn("Business verification failed for claim", map[string]interface{}{
+			"business_number": req.BusinessNumber,
+			"user_id":         userID,
+			"reason":          verificationResult.Message,
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "사업자 인증에 실패했습니다",
+			"message": verificationResult.Message,
+		})
+		return
+	}
+
+	log.Info("Business verification successful for claim", map[string]interface{}{
+		"business_number": req.BusinessNumber,
+		"store_id":        storeID,
+		"user_id":         userID,
+		"status":          verificationResult.BusinessStatus,
+	})
+
+	// 3. 매장 소유권 부여
+	now := time.Now()
+	userIDUint := userID
+	store.UserID = &userIDUint
+	store.IsManaged = true
+	store.IsVerified = false // 아직 인증 전 (2단계 인증 필요)
+	store.VerifiedAt = nil
+
+	// 사업자 정보 추가
+	store.BusinessRegistration = &model.BusinessRegistration{
+		StoreID:            uint(storeID),
+		BusinessNumber:     req.BusinessNumber,
+		BusinessStartDate:  req.BusinessStartDate,
+		RepresentativeName: req.RepresentativeName,
+		BusinessStatus:     verificationResult.BusinessStatus,
+		TaxType:            verificationResult.TaxType,
+		IsVerified:         true,
+		VerificationDate:   &now,
+	}
+
+	// DB 업데이트
+	updated, err := ctrl.storeService.UpdateStoreOwnership(store)
+	if err != nil {
+		log.Error("Failed to claim store", err, map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  userID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "매장 소유권 등록에 실패했습니다",
+		})
+		return
+	}
+
+	// 4. 사용자를 admin으로 승격
+	err = ctrl.storeService.PromoteUserToAdmin(userID)
+	if err != nil {
+		log.Error("Failed to promote user to admin after claim", err, map[string]interface{}{
+			"user_id":  userID,
+			"store_id": storeID,
+		})
+		// 매장 소유권은 부여됐으나 권한 승격 실패 - 경고만 로그
+	}
+
+	log.Info("Store claimed successfully", map[string]interface{}{
+		"store_id":    storeID,
+		"user_id":     userID,
+		"is_managed":  true,
+		"is_verified": false,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "매장 소유권이 등록되었습니다. 인증을 완료하면 신뢰도가 높아집니다.",
+		"store":       updated,
+		"is_verified": false,
+	})
+}
+
+// SubmitVerificationRequest 매장 인증 신청 요청 (2단계)
+type SubmitVerificationRequest struct {
+	BusinessLicenseURL string `json:"business_license_url" binding:"required"` // 사업자등록증 이미지 URL (S3)
+}
+
+// SubmitVerification 매장 인증 신청 (2단계 검증)
+func (ctrl *StoreController) SubmitVerification(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		log.Warn("User ID not found in context for verification submission", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Unauthorized",
+		})
+		return
+	}
+
+	var req SubmitVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid verification submission request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// 1. 사용자의 매장 확인
+	store, err := ctrl.storeService.GetStoreByUserID(userID)
+	if err != nil {
+		log.Warn("User does not have a store", map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "매장을 찾을 수 없습니다. 먼저 매장 소유권을 등록해주세요.",
+		})
+		return
+	}
+
+	// 2. 이미 인증된 매장인지 확인
+	if store.IsVerified {
+		log.Warn("Store already verified", map[string]interface{}{
+			"store_id": store.ID,
+			"user_id":  userID,
+		})
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "이미 인증된 매장입니다",
+		})
+		return
+	}
+
+	// 3. 이미 대기 중인 인증이 있는지 확인
+	existingVerification, _ := ctrl.storeService.GetVerificationByStoreID(store.ID)
+	if existingVerification != nil && existingVerification.Status == model.VerificationStatusPending {
+		log.Warn("Verification already pending", map[string]interface{}{
+			"store_id":        store.ID,
+			"verification_id": existingVerification.ID,
+		})
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "이미 인증 심사가 진행 중입니다",
+		})
+		return
+	}
+
+	// 4. 인증 요청 생성
+	now := time.Now()
+	verification := &model.StoreVerification{
+		StoreID:            store.ID,
+		BusinessLicenseURL: req.BusinessLicenseURL,
+		Status:             model.VerificationStatusPending,
+		SubmittedAt:        &now,
+		IPAddress:          c.ClientIP(),
+		UserAgent:          c.Request.UserAgent(),
+	}
+
+	created, err := ctrl.storeService.CreateVerification(verification)
+	if err != nil {
+		log.Error("Failed to create verification", err, map[string]interface{}{
+			"store_id": store.ID,
+			"user_id":  userID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "인증 신청 중 오류가 발생했습니다",
+		})
+		return
+	}
+
+	log.Info("Verification submitted successfully", map[string]interface{}{
+		"store_id":        store.ID,
+		"verification_id": created.ID,
+		"user_id":         userID,
+	})
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message":      "인증 신청이 완료되었습니다. 검토 후 승인됩니다.",
+		"verification": created,
+		"status":       created.Status,
+	})
+}
+
+// GetMyVerificationStatus 내 매장 인증 상태 조회
+func (ctrl *StoreController) GetMyVerificationStatus(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		log.Warn("User ID not found in context for verification status", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Unauthorized",
+		})
+		return
+	}
+
+	// 사용자의 매장 확인
+	store, err := ctrl.storeService.GetStoreByUserID(userID)
+	if err != nil {
+		log.Warn("User does not have a store", map[string]interface{}{
+			"user_id": userID,
+		})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "매장을 찾을 수 없습니다",
+		})
+		return
+	}
+
+	// 인증 정보 조회
+	verification, err := ctrl.storeService.GetVerificationByStoreID(store.ID)
+	if err != nil {
+		// 인증 신청이 없는 경우
+		c.JSON(http.StatusOK, gin.H{
+			"is_verified":  store.IsVerified,
+			"verification": nil,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"is_verified":  store.IsVerified,
+		"verification": verification,
+	})
+}
+
+// ListPendingVerifications 관리자용: 대기 중인 인증 목록 조회
+func (ctrl *StoreController) ListPendingVerifications(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	// 상태 필터 (기본값: pending)
+	status := c.DefaultQuery("status", model.VerificationStatusPending)
+
+	verifications, err := ctrl.storeService.ListVerificationsByStatus(status)
+	if err != nil {
+		log.Error("Failed to list verifications", err, map[string]interface{}{
+			"status": status,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "인증 목록 조회 중 오류가 발생했습니다",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"verifications": verifications,
+		"count":         len(verifications),
+	})
+}
+
+// ReviewVerificationRequest 인증 승인/반려 요청
+type ReviewVerificationRequest struct {
+	Action string `json:"action" binding:"required,oneof=approve reject"` // approve or reject
+	Reason string `json:"reason"`                                         // 반려 사유 (reject일 경우 필수)
+}
+
+// ReviewVerification 관리자용: 인증 승인/반려
+func (ctrl *StoreController) ReviewVerification(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	adminID, exists := middleware.GetUserID(c)
+	if !exists {
+		log.Warn("Admin ID not found in context for verification review", nil)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Unauthorized",
+		})
+		return
+	}
+
+	// 인증 ID 파싱
+	idStr := c.Param("id")
+	verificationID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		log.Warn("Invalid verification ID format", map[string]interface{}{
+			"verification_id": idStr,
+			"error":           err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid verification ID",
+		})
+		return
+	}
+
+	var req ReviewVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Invalid verification review request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// reject일 경우 사유 필수
+	if req.Action == "reject" && req.Reason == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "반려 사유를 입력해주세요",
+		})
+		return
+	}
+
+	// 인증 정보 조회
+	verification, err := ctrl.storeService.GetVerificationByID(uint(verificationID))
+	if err != nil {
+		log.Warn("Verification not found", map[string]interface{}{
+			"verification_id": verificationID,
+		})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "인증 정보를 찾을 수 없습니다",
+		})
+		return
+	}
+
+	// 이미 처리된 인증인지 확인
+	if verification.Status != model.VerificationStatusPending {
+		log.Warn("Verification already reviewed", map[string]interface{}{
+			"verification_id": verificationID,
+			"status":          verification.Status,
+		})
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "이미 처리된 인증 요청입니다",
+		})
+		return
+	}
+
+	now := time.Now()
+	verification.ReviewedAt = &now
+	verification.ReviewedBy = &adminID
+
+	if req.Action == "approve" {
+		// 승인 처리
+		verification.Status = model.VerificationStatusApproved
+
+		// 매장 인증 상태 업데이트
+		if err := ctrl.storeService.ApproveStoreVerification(verification.StoreID, &now); err != nil {
+			log.Error("Failed to approve store verification", err, map[string]interface{}{
+				"store_id":        verification.StoreID,
+				"verification_id": verificationID,
+			})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "매장 인증 승인 중 오류가 발생했습니다",
+			})
+			return
+		}
+
+		log.Info("Verification approved", map[string]interface{}{
+			"verification_id": verificationID,
+			"store_id":        verification.StoreID,
+			"admin_id":        adminID,
+		})
+	} else {
+		// 반려 처리
+		verification.Status = model.VerificationStatusRejected
+		verification.RejectionReason = req.Reason
+
+		log.Info("Verification rejected", map[string]interface{}{
+			"verification_id": verificationID,
+			"store_id":        verification.StoreID,
+			"admin_id":        adminID,
+			"reason":          req.Reason,
+		})
+	}
+
+	// 인증 정보 업데이트
+	if err := ctrl.storeService.UpdateVerification(verification); err != nil {
+		log.Error("Failed to update verification", err, map[string]interface{}{
+			"verification_id": verificationID,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "인증 처리 중 오류가 발생했습니다",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "인증 처리가 완료되었습니다",
+		"verification": verification,
+	})
+}

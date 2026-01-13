@@ -18,6 +18,7 @@ func Migrate() error {
 		&model.PasswordReset{},
 		&model.Store{},
 		&model.BusinessRegistration{},
+		&model.StoreVerification{},
 		&model.GoldPrice{},
 		&model.CommunityPost{},
 		&model.CommunityComment{},
@@ -116,6 +117,7 @@ func seedInitialData() error {
 			BuyingGold:     true,
 			BuyingPlatinum: true,
 			BuyingSilver:   true,
+			IsManaged:      true, // 관리매장
 		},
 		{
 			Name:           "서울 마포 금은방",
@@ -130,6 +132,7 @@ func seedInitialData() error {
 			BuyingGold:     true,
 			BuyingPlatinum: false,
 			BuyingSilver:   true,
+			IsManaged:      true, // 관리매장
 		},
 		{
 			Name:           "부산 해운대 금은방",
@@ -144,6 +147,7 @@ func seedInitialData() error {
 			BuyingGold:     true,
 			BuyingPlatinum: true,
 			BuyingSilver:   true,
+			IsManaged:      true, // 관리매장
 		},
 		{
 			Name:           "부산 남포 금은방",
@@ -158,6 +162,7 @@ func seedInitialData() error {
 			BuyingGold:     true,
 			BuyingPlatinum: true,
 			BuyingSilver:   false,
+			IsManaged:      true, // 관리매장
 		},
 		{
 			Name:           "대구 동성로 금은방",
@@ -172,6 +177,7 @@ func seedInitialData() error {
 			BuyingGold:     true,
 			BuyingPlatinum: false,
 			BuyingSilver:   true,
+			IsManaged:      true, // 관리매장
 		},
 		{
 			Name:           "광주 충장로 금은방",
@@ -186,6 +192,7 @@ func seedInitialData() error {
 			BuyingGold:     true,
 			BuyingPlatinum: true,
 			BuyingSilver:   true,
+			IsManaged:      true, // 관리매장
 		},
 		{
 			Name:           "제주 신제주 금은방",
@@ -200,13 +207,14 @@ func seedInitialData() error {
 			BuyingGold:     true,
 			BuyingPlatinum: false,
 			BuyingSilver:   true,
+			IsManaged:      true, // 관리매장
 		},
 	}
 
 	totalStores := 0
 
 	for _, store := range stores {
-		store.UserID = admin.ID
+		store.UserID = &admin.ID
 
 		var createdStore model.Store
 		if err := DB.Where("name = ?", store.Name).

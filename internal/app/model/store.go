@@ -39,8 +39,8 @@ func (s *StringArray) Scan(value interface{}) error {
 }
 
 type Store struct {
-	ID          uint           `gorm:"primarykey" json:"id"`          // 고유 매장 ID
-	UserID      uint           `gorm:"not null;index" json:"user_id"` // 매장 소유자 ID
+	ID          uint           `gorm:"primarykey" json:"id"`     // 고유 매장 ID
+	UserID      *uint          `gorm:"index" json:"user_id"`     // 매장 소유자 ID (nullable - 비관리매장은 null)
 	User        User           `gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT" json:"owner,omitempty"`
 	Name        string         `gorm:"not null" json:"name"`                 // 매장명
 	Slug        string         `gorm:"uniqueIndex" json:"slug"`              // URL용 고유 식별자 (SEO)
@@ -55,8 +55,16 @@ type Store struct {
 	OpenTime    string         `gorm:"type:varchar(10)" json:"open_time"`    // 오픈 시간 (예: "09:00")
 	CloseTime   string         `gorm:"type:varchar(10)" json:"close_time"`   // 마감 시간 (예: "20:00")
 
+	// 2단계 검증 시스템
+	IsManaged   bool       `gorm:"default:false;index" json:"is_managed"`    // 관리매장 여부 (소유자가 있는 매장)
+	IsVerified  bool       `gorm:"default:false;index" json:"is_verified"`   // 인증 매장 여부 (사업자등록증 검증 완료)
+	VerifiedAt  *time.Time `json:"verified_at,omitempty"`                    // 인증 완료 일시
+
 	// 사업자 정보 (1:1 관계 - 별도 테이블로 관리)
 	BusinessRegistration *BusinessRegistration `gorm:"foreignKey:StoreID" json:"business_registration,omitempty"`
+
+	// 인증 정보 (1:1 관계)
+	Verification *StoreVerification `gorm:"foreignKey:StoreID" json:"verification,omitempty"`
 
 	// 매장 태그 (Many-to-Many 관계)
 	Tags []Tag `gorm:"many2many:store_tags;" json:"tags,omitempty"`
