@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"sort"
+	"time"
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/repository"
@@ -36,15 +37,24 @@ type StoreService interface {
 	ListStores(opts StoreListOptions) ([]model.Store, error)
 	GetStoreByID(id uint, includeProducts bool) (*model.Store, error)
 	GetStoresByUserID(userID uint) ([]model.Store, error)
+	GetStoreByUserID(userID uint) (*model.Store, error)
+	GetStoreByBusinessNumber(businessNumber string) (*model.Store, error)
 	ListLocations() ([]StoreLocationSummary, error)
 	CreateStore(store *model.Store) (*model.Store, error)
 	UpdateStore(userID uint, storeID uint, input StoreMutation) (*model.Store, error)
+	UpdateStoreOwnership(store *model.Store) (*model.Store, error)
 	DeleteStore(userID uint, storeID uint) error
 	ToggleStoreLike(storeID, userID uint) (bool, error)
 	IsStoreLiked(storeID, userID uint) (bool, error)
 	GetUserLikedStores(userID uint) ([]model.Store, error)
 	GetUserLikedStoreIDs(userID uint) ([]uint, error)
 	PromoteUserToAdmin(userID uint) error
+	CreateVerification(verification *model.StoreVerification) (*model.StoreVerification, error)
+	GetVerificationByStoreID(storeID uint) (*model.StoreVerification, error)
+	GetVerificationByID(verificationID uint) (*model.StoreVerification, error)
+	ListVerificationsByStatus(status string) ([]*model.StoreVerification, error)
+	ApproveStoreVerification(storeID uint, verifiedAt *time.Time) error
+	UpdateVerification(verification *model.StoreVerification) error
 }
 
 type storeService struct {
@@ -187,6 +197,28 @@ func (s *storeService) GetStoresByUserID(userID uint) ([]model.Store, error) {
 	return stores, nil
 }
 
+func (s *storeService) GetStoreByBusinessNumber(businessNumber string) (*model.Store, error) {
+	logger.Debug("Fetching store by business number", map[string]interface{}{
+		"business_number": businessNumber,
+	})
+
+	store, err := s.storeRepo.FindByBusinessNumber(businessNumber)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Debug("Store not found with business number", map[string]interface{}{
+				"business_number": businessNumber,
+			})
+			return nil, nil // 찾지 못한 경우 nil 반환 (에러 아님)
+		}
+		logger.Error("Failed to fetch store by business number", err, map[string]interface{}{
+			"business_number": businessNumber,
+		})
+		return nil, err
+	}
+
+	return store, nil
+}
+
 func (s *storeService) CreateStore(store *model.Store) (*model.Store, error) {
 	logger.Info("Creating store", map[string]interface{}{
 		"name":    store.Name,
@@ -222,21 +254,23 @@ func (s *storeService) CreateStore(store *model.Store) (*model.Store, error) {
 	}
 
 	// Update user's nickname to store name (매장 등록 시 무조건 닉네임 변경)
-	user, err := s.userRepo.FindByID(store.UserID)
-	if err == nil {
-		user.Nickname = store.Name
-		if err := s.userRepo.Update(user); err != nil {
-			logger.Warn("Failed to update user nickname after store creation", map[string]interface{}{
-				"user_id":    store.UserID,
-				"store_name": store.Name,
-				"error":      err.Error(),
-			})
-			// Don't fail the entire operation if nickname update fails
-		} else {
-			logger.Info("User nickname updated to store name", map[string]interface{}{
-				"user_id":  store.UserID,
-				"nickname": store.Name,
-			})
+	if store.UserID != nil {
+		user, err := s.userRepo.FindByID(*store.UserID)
+		if err == nil {
+			user.Nickname = store.Name
+			if err := s.userRepo.Update(user); err != nil {
+				logger.Warn("Failed to update user nickname after store creation", map[string]interface{}{
+					"user_id":    *store.UserID,
+					"store_name": store.Name,
+					"error":      err.Error(),
+				})
+				// Don't fail the entire operation if nickname update fails
+			} else {
+				logger.Info("User nickname updated to store name", map[string]interface{}{
+					"user_id":  *store.UserID,
+					"nickname": store.Name,
+				})
+			}
 		}
 	}
 
@@ -267,7 +301,7 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 		return nil, err
 	}
 
-	if existing.UserID != userID {
+	if existing.UserID == nil || *existing.UserID != userID {
 		logger.Warn("Store update forbidden", map[string]interface{}{
 			"store_id": storeID,
 			"user_id":  userID,
@@ -391,7 +425,7 @@ func (s *storeService) DeleteStore(userID uint, storeID uint) error {
 		return err
 	}
 
-	if existing.UserID != userID {
+	if existing.UserID == nil || *existing.UserID != userID {
 		logger.Warn("Store delete forbidden", map[string]interface{}{
 			"store_id": storeID,
 			"user_id":  userID,
@@ -625,7 +659,7 @@ func (s *storeService) GetStoreByUserID(userID uint) (*model.Store, error) {
 		"user_id": userID,
 	})
 
-	store, err := s.storeRepo.FindByUserID(userID)
+	store, err := s.storeRepo.FindSingleByUserID(userID)
 	if err != nil {
 		logger.Error("Failed to find store by user ID", err, map[string]interface{}{
 			"user_id": userID,

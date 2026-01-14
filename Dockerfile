@@ -11,8 +11,9 @@ RUN go mod download
 # 소스 전체 복사
 COPY . .
 
-# Go 빌드 (cmd/server 경로 기준)
+# Go 빌드 (server와 seed 모두 빌드)
 RUN CGO_ENABLED=0 GOOS=linux go build -o app ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o seed ./cmd/seed
 
 # 2단계: Run stage
 FROM alpine:latest
@@ -25,6 +26,7 @@ WORKDIR /root/
 
 # 빌드된 실행 파일 복사
 COPY --from=builder /app/app .
+COPY --from=builder /app/seed .
 
 # 포트 (네 서버에서 사용하는 포트로 맞춰)
 EXPOSE 8080

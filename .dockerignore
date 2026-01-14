@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+
+# Data files (XLSX should not be in image)
+data/
+*.xlsx
+*.xls
+*.csv
+
+# Development files
+.env
+.env.local
+.env.development
+.env.production
+
+# Build artifacts
+bin/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test files
+*_test.go
+testdata/
+
+# Documentation
+README.md
+*.md
+!cmd/seed/README.md
+
+# Docker
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# Uploads (if any)
+uploads/

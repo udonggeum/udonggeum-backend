@@ -48,3 +48,8 @@ Thumbs.db
 /uploads/*.png
 /uploads/*.gif
 /uploads/*.webp
+
+# Data files
+/data/*.xlsx
+/data/*.xls
+/data/*.csv

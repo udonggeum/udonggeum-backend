@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  # Seed용 일회성 서비스
+  seed:
+    image: ghcr.io/udonggeum/udonggeum-backend:latest
+    container_name: udonggeum-seed
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+    volumes:
+      - ./data:/app/data  # data 디렉토리 마운트
+    depends_on:
+      - db
+    networks:
+      - udonggeum-network
+    command: /app/seed /app/data/stores.xlsx
+
+networks:
+  udonggeum-network:
+    external: true  # 기존 네트워크 사용

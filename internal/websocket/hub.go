@@ -148,7 +148,7 @@ func (h *Hub) Run() {
 								// 버퍼가 거의 가득 찬 경우에만 연결 끊기 (>90%)
 								if len(client.Send) > 1843 { // 2048 * 0.9
 									go h.Unregister(client)
-									logger.Error("Client consistently slow, disconnecting", map[string]interface{}{
+									logger.Warn("Client consistently slow, disconnecting", map[string]interface{}{
 										"user_id":     userID,
 										"buffer_size": len(client.Send),
 									})
@@ -360,7 +360,7 @@ func (h *Hub) SendNotificationToUser(userID uint, notification interface{}) erro
 				// 버퍼가 거의 가득 찬 경우에만 연결 끊기
 				if len(client.Send) > 1843 { // 2048 * 0.9
 					go h.Unregister(client)
-					logger.Error("Client consistently slow, disconnecting", map[string]interface{}{
+					logger.Warn("Client consistently slow, disconnecting", map[string]interface{}{
 						"user_id": userID,
 					})
 				}

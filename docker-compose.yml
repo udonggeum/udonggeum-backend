@@ -42,8 +42,8 @@ services:
       POSTGRES_DB: udonggeum
     volumes:
       - db_data:/var/lib/postgresql/data
-    # ports:
-    #   - "5432:5432"
+    ports:
+      - "5432:5432"  # 로컬에서 seed 실행을 위해 포트 개방
     networks:
       - udonggeum-network
 

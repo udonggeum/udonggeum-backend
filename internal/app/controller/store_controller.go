@@ -274,6 +274,19 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		return
 	}
 
+	// 한 사용자당 하나의 매장만 허용
+	existingStores, err := ctrl.storeService.GetStoresByUserID(userID)
+	if err == nil && len(existingStores) > 0 {
+		log.Warn("User already owns a store", map[string]interface{}{
+			"user_id":         userID,
+			"existing_stores": len(existingStores),
+		})
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "이미 매장을 소유하고 있습니다. 한 계정당 하나의 매장만 등록 가능합니다.",
+		})
+		return
+	}
+
 	var req StoreRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Warn("Invalid store creation request", map[string]interface{}{
@@ -286,7 +299,30 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		return
 	}
 
-	// 1. 사업자 등록번호 진위 확인
+	// 1. 사업자등록번호 중복 확인
+	existingStore, err := ctrl.storeService.GetStoreByBusinessNumber(req.BusinessNumber)
+	if err != nil {
+		log.Error("Failed to check business number duplication", err, map[string]interface{}{
+			"business_number": req.BusinessNumber,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "사업자번호 확인 중 오류가 발생했습니다",
+		})
+		return
+	}
+	if existingStore != nil {
+		log.Warn("Business number already registered", map[string]interface{}{
+			"business_number": req.BusinessNumber,
+			"existing_store":  existingStore.ID,
+			"user_id":         userID,
+		})
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "이미 해당 사업자등록번호로 등록된 매장이 있습니다",
+		})
+		return
+	}
+
+	// 2. 사업자 등록번호 진위 확인
 	log.Info("Verifying business number", map[string]interface{}{
 		"business_number": req.BusinessNumber,
 		"user_id":         userID,
@@ -337,7 +373,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 	// 3. 사업자 인증 성공 - 매장 생성
 	now := time.Now()
 	store := &model.Store{
-		UserID:      userID,
+		UserID:      &userID,
 		Name:        req.Name,
 		Region:      req.Region,
 		District:    req.District,
@@ -374,15 +410,26 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		return
 	}
 
-	// 4. 사용자를 admin으로 승격 (UserService 필요)
+	// 4. 사용자를 admin으로 승격 (필수)
 	err = ctrl.storeService.PromoteUserToAdmin(userID)
 	if err != nil {
 		log.Error("Failed to promote user to admin", err, map[string]interface{}{
 			"user_id":  userID,
 			"store_id": created.ID,
 		})
-		// 매장은 생성됐으나 권한 승격 실패 - 경고 로그만 남기고 계속 진행
-		// 관리자가 수동으로 권한을 부여할 수 있음
+
+		// 권한 승격 실패 시 생성된 매장 삭제 (롤백)
+		if deleteErr := ctrl.storeService.DeleteStore(userID, created.ID); deleteErr != nil {
+			log.Error("Failed to rollback store creation", deleteErr, map[string]interface{}{
+				"user_id":  userID,
+				"store_id": created.ID,
+			})
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "매장 등록 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+		})
+		return
 	}
 
 	log.Info("Store created successfully", map[string]interface{}{
@@ -865,6 +912,19 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		return
 	}
 
+	// 한 사용자당 하나의 매장만 허용
+	existingStores, err := ctrl.storeService.GetStoresByUserID(userID)
+	if err == nil && len(existingStores) > 0 {
+		log.Warn("User already owns a store", map[string]interface{}{
+			"user_id":         userID,
+			"existing_stores": len(existingStores),
+		})
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "이미 매장을 소유하고 있습니다. 한 계정당 하나의 매장만 소유 가능합니다.",
+		})
+		return
+	}
+
 	// 매장 ID 파싱
 	idStr := c.Param("id")
 	storeID, err := strconv.ParseUint(idStr, 10, 32)
@@ -892,7 +952,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 	}
 
 	// 1. 매장 존재 확인 및 이미 관리 중인지 확인
-	store, err := ctrl.storeService.GetStoreByID(uint(storeID), nil, nil)
+	store, err := ctrl.storeService.GetStoreByID(uint(storeID), false)
 	if err != nil {
 		log.Warn("Store not found for claim", map[string]interface{}{
 			"store_id": storeID,
@@ -914,7 +974,32 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		return
 	}
 
-	// 2. 사업자 등록번호 진위 확인
+	// 2. 사업자등록번호 중복 확인
+	existingStore, err := ctrl.storeService.GetStoreByBusinessNumber(req.BusinessNumber)
+	if err != nil {
+		log.Error("Failed to check business number duplication", err, map[string]interface{}{
+			"business_number": req.BusinessNumber,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "사업자번호 확인 중 오류가 발생했습니다",
+		})
+		return
+	}
+	if existingStore != nil && existingStore.ID != uint(storeID) {
+		// 다른 매장이 이미 이 사업자번호를 사용 중
+		log.Warn("Business number already registered to another store", map[string]interface{}{
+			"business_number": req.BusinessNumber,
+			"existing_store":  existingStore.ID,
+			"claiming_store":  storeID,
+			"user_id":         userID,
+		})
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "이미 해당 사업자등록번호로 등록된 다른 매장이 있습니다",
+		})
+		return
+	}
+
+	// 3. 사업자 등록번호 진위 확인
 	log.Info("Verifying business number for claim", map[string]interface{}{
 		"business_number": req.BusinessNumber,
 		"store_id":        storeID,
@@ -958,7 +1043,13 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		"status":          verificationResult.BusinessStatus,
 	})
 
-	// 3. 매장 소유권 부여
+	// 3. 기존 매장 상태 백업 (롤백용)
+	originalUserID := store.UserID
+	originalIsManaged := store.IsManaged
+	originalIsVerified := store.IsVerified
+	originalVerifiedAt := store.VerifiedAt
+
+	// 4. 매장 소유권 부여
 	now := time.Now()
 	userIDUint := userID
 	store.UserID = &userIDUint
@@ -991,14 +1082,32 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		return
 	}
 
-	// 4. 사용자를 admin으로 승격
+	// 5. 사용자를 admin으로 승격 (필수)
 	err = ctrl.storeService.PromoteUserToAdmin(userID)
 	if err != nil {
 		log.Error("Failed to promote user to admin after claim", err, map[string]interface{}{
 			"user_id":  userID,
 			"store_id": storeID,
 		})
-		// 매장 소유권은 부여됐으나 권한 승격 실패 - 경고만 로그
+
+		// 권한 승격 실패 시 원래 상태로 롤백
+		store.UserID = originalUserID
+		store.IsManaged = originalIsManaged
+		store.IsVerified = originalIsVerified
+		store.VerifiedAt = originalVerifiedAt
+		store.BusinessRegistration = nil // 사업자 정보 제거
+
+		if _, rollbackErr := ctrl.storeService.UpdateStoreOwnership(store); rollbackErr != nil {
+			log.Error("Failed to rollback store claim", rollbackErr, map[string]interface{}{
+				"user_id":  userID,
+				"store_id": storeID,
+			})
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "매장 소유권 등록 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+		})
+		return
 	}
 
 	log.Info("Store claimed successfully", map[string]interface{}{
@@ -1069,21 +1178,72 @@ func (ctrl *StoreController) SubmitVerification(c *gin.Context) {
 		return
 	}
 
-	// 3. 이미 대기 중인 인증이 있는지 확인
+	// 3. 기존 인증 확인 및 처리
+	now := time.Now()
 	existingVerification, _ := ctrl.storeService.GetVerificationByStoreID(store.ID)
-	if existingVerification != nil && existingVerification.Status == model.VerificationStatusPending {
-		log.Warn("Verification already pending", map[string]interface{}{
+
+	if existingVerification != nil {
+		// 이미 인증이 있는 경우
+		if existingVerification.Status == model.VerificationStatusPending {
+			log.Warn("Verification already pending", map[string]interface{}{
+				"store_id":        store.ID,
+				"verification_id": existingVerification.ID,
+			})
+			c.JSON(http.StatusConflict, gin.H{
+				"error": "이미 인증 심사가 진행 중입니다",
+			})
+			return
+		}
+
+		// rejected 상태인 경우 기존 레코드를 업데이트 (재신청)
+		if existingVerification.Status == model.VerificationStatusRejected {
+			log.Info("Resubmitting verification after rejection", map[string]interface{}{
+				"store_id":        store.ID,
+				"verification_id": existingVerification.ID,
+				"user_id":         userID,
+			})
+
+			existingVerification.BusinessLicenseURL = req.BusinessLicenseURL
+			existingVerification.Status = model.VerificationStatusPending
+			existingVerification.SubmittedAt = &now
+			existingVerification.ReviewedAt = nil
+			existingVerification.ReviewedBy = nil
+			existingVerification.RejectionReason = ""
+			existingVerification.IPAddress = c.ClientIP()
+			existingVerification.UserAgent = c.Request.UserAgent()
+
+			if err := ctrl.storeService.UpdateVerification(existingVerification); err != nil {
+				log.Error("Failed to resubmit verification", err, map[string]interface{}{
+					"store_id":        store.ID,
+					"verification_id": existingVerification.ID,
+					"user_id":         userID,
+				})
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": "인증 재신청 중 오류가 발생했습니다",
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"message":      "인증이 재신청되었습니다. 검토 후 승인됩니다.",
+				"verification": existingVerification,
+				"status":       existingVerification.Status,
+			})
+			return
+		}
+
+		// approved 상태인 경우 (이미 인증됨)
+		log.Warn("Store already verified", map[string]interface{}{
 			"store_id":        store.ID,
 			"verification_id": existingVerification.ID,
 		})
 		c.JSON(http.StatusConflict, gin.H{
-			"error": "이미 인증 심사가 진행 중입니다",
+			"error": "이미 인증이 완료된 매장입니다",
 		})
 		return
 	}
 
-	// 4. 인증 요청 생성
-	now := time.Now()
+	// 4. 신규 인증 요청 생성
 	verification := &model.StoreVerification{
 		StoreID:            store.ID,
 		BusinessLicenseURL: req.BusinessLicenseURL,

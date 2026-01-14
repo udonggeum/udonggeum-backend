@@ -27,11 +27,20 @@ type StoreRepository interface {
 	FindAll(filter StoreFilter) ([]model.Store, error)
 	FindByID(id uint, includeProducts bool) (*model.Store, error)
 	FindByUserID(userID uint) ([]model.Store, error)
+	FindSingleByUserID(userID uint) (*model.Store, error)
+	FindByBusinessNumber(businessNumber string) (*model.Store, error)
 	ListLocations() ([]StoreLocation, error)
 	ToggleLike(storeID, userID uint) (bool, error)
 	IsLiked(storeID, userID uint) (bool, error)
 	GetUserLikedStores(userID uint) ([]model.Store, error)
 	GetUserLikedStoreIDs(userID uint) ([]uint, error)
+	BulkCreate(stores []model.Store, batchSize int) error
+	CreateBusinessRegistration(businessReg *model.BusinessRegistration) error
+	CreateVerification(verification *model.StoreVerification) error
+	FindVerificationByStoreID(storeID uint) (*model.StoreVerification, error)
+	FindVerificationByID(verificationID uint) (*model.StoreVerification, error)
+	FindVerificationsByStatus(status string) ([]*model.StoreVerification, error)
+	UpdateVerification(verification *model.StoreVerification) error
 }
 
 type storeRepository struct {
@@ -397,8 +406,8 @@ func (r *storeRepository) CreateBusinessRegistration(businessReg *model.Business
 	return nil
 }
 
-// FindByUserID finds a store by user ID
-func (r *storeRepository) FindByUserID(userID uint) (*model.Store, error) {
+// FindSingleByUserID finds a single store by user ID
+func (r *storeRepository) FindSingleByUserID(userID uint) (*model.Store, error) {
 	var store model.Store
 	if err := r.db.
 		Preload("BusinessRegistration").
@@ -409,6 +418,30 @@ func (r *storeRepository) FindByUserID(userID uint) (*model.Store, error) {
 		return nil, err
 	}
 	return &store, nil
+}
+
+// FindByBusinessNumber finds a store by business number
+func (r *storeRepository) FindByBusinessNumber(businessNumber string) (*model.Store, error) {
+	logger.Debug("Finding store by business number", map[string]interface{}{
+		"business_number": businessNumber,
+	})
+
+	var businessReg model.BusinessRegistration
+	if err := r.db.
+		Preload("Store").
+		Where("business_number = ?", businessNumber).
+		First(&businessReg).Error; err != nil {
+		logger.Debug("No store found with business number", map[string]interface{}{
+			"business_number": businessNumber,
+		})
+		return nil, err
+	}
+
+	logger.Debug("Store found with business number", map[string]interface{}{
+		"business_number": businessNumber,
+		"store_id":        businessReg.StoreID,
+	})
+	return &businessReg.Store, nil
 }
 
 // CreateVerification creates a new store verification request
@@ -488,6 +521,27 @@ func (r *storeRepository) UpdateVerification(verification *model.StoreVerificati
 
 	logger.Info("Verification updated successfully", map[string]interface{}{
 		"verification_id": verification.ID,
+	})
+	return nil
+}
+
+// BulkCreate creates multiple stores in batches
+func (r *storeRepository) BulkCreate(stores []model.Store, batchSize int) error {
+	logger.Info("Bulk creating stores", map[string]interface{}{
+		"total_count": len(stores),
+		"batch_size":  batchSize,
+	})
+
+	if err := r.db.CreateInBatches(stores, batchSize).Error; err != nil {
+		logger.Error("Failed to bulk create stores", err, map[string]interface{}{
+			"total_count": len(stores),
+			"batch_size":  batchSize,
+		})
+		return err
+	}
+
+	logger.Info("Bulk create completed", map[string]interface{}{
+		"count": len(stores),
 	})
 	return nil
 }

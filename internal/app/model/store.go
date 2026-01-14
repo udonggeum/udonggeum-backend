@@ -43,10 +43,16 @@ type Store struct {
 	UserID      *uint          `gorm:"index" json:"user_id"`     // 매장 소유자 ID (nullable - 비관리매장은 null)
 	User        User           `gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT" json:"owner,omitempty"`
 	Name        string         `gorm:"not null" json:"name"`                 // 매장명
+	BranchName  string         `gorm:"type:varchar(100)" json:"branch_name,omitempty"` // 지점명
 	Slug        string         `gorm:"uniqueIndex" json:"slug"`              // URL용 고유 식별자 (SEO)
 	Region      string         `gorm:"index;not null" json:"region"`         // 시·도
 	District    string         `gorm:"index;not null" json:"district"`       // 구·군
+	Dong        string         `gorm:"type:varchar(100)" json:"dong,omitempty"` // 행정동명
 	Address     string         `gorm:"type:text" json:"address"`             // 상세 주소
+	BuildingName string        `gorm:"type:varchar(200)" json:"building_name,omitempty"` // 건물명
+	Floor       string         `gorm:"type:varchar(50)" json:"floor,omitempty"` // 층정보
+	Unit        string         `gorm:"type:varchar(50)" json:"unit,omitempty"`  // 호정보
+	PostalCode  string         `gorm:"type:varchar(10)" json:"postal_code,omitempty"` // 우편번호
 	Latitude    *float64       `gorm:"type:decimal(10,8)" json:"latitude"`   // 위도 (WGS84)
 	Longitude   *float64       `gorm:"type:decimal(11,8)" json:"longitude"`  // 경도 (WGS84)
 	PhoneNumber string         `gorm:"type:varchar(30)" json:"phone_number"` // 연락처
