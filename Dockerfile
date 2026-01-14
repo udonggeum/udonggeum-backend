@@ -1,5 +1,5 @@
 # 1단계: Build stage
-FROM golang:1.23 AS builder
+FROM golang:1.24 AS builder
 
 # 작업 디렉토리 설정
 WORKDIR /app
