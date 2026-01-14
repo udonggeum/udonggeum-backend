@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -92,7 +93,8 @@ func readStoresFromXLSX(filePath string) ([]model.Store, error) {
 	}
 
 	var stores []model.Store
-	seenStores := make(map[string]bool) // 중복 제거용
+	seenStores := make(map[string]bool)  // 중복 제거용
+	slugCounter := make(map[string]int)  // slug 중복 처리용
 	skippedCount := 0
 	invalidCoordCount := 0
 
@@ -159,10 +161,21 @@ func readStoresFromXLSX(filePath string) ([]model.Store, error) {
 		}
 		seenStores[key] = true
 
+		// Slug 생성 (중복 처리)
+		baseSlug := generateSlug(district, name)
+		slug := baseSlug
+		if count, exists := slugCounter[baseSlug]; exists {
+			slugCounter[baseSlug] = count + 1
+			slug = fmt.Sprintf("%s-%d", baseSlug, count+1)
+		} else {
+			slugCounter[baseSlug] = 1
+		}
+
 		// Store 모델 생성
 		store := model.Store{
 			Name:         name,
 			BranchName:   branchName,
+			Slug:         slug, // 미리 생성한 slug 사용
 			Region:       region,
 			District:     district,
 			Dong:         dong,
@@ -176,7 +189,6 @@ func readStoresFromXLSX(filePath string) ([]model.Store, error) {
 			UserID:       nil,   // 비관리 매장
 			IsManaged:    false,
 			IsVerified:   false,
-			// Slug는 BeforeCreate에서 자동 생성됨
 			// 기타 필드들은 기본값 사용
 		}
 
@@ -195,4 +207,26 @@ func readStoresFromXLSX(filePath string) ([]model.Store, error) {
 	fmt.Printf("  Rows with invalid coordinates: %d\n", invalidCoordCount)
 
 	return stores, nil
+}
+
+// generateSlug는 매장명과 지역 정보로 URL용 slug를 생성합니다
+func generateSlug(district, name string) string {
+	// 공백을 하이픈으로 변경
+	slug := fmt.Sprintf("%s-%s", district, name)
+
+	// 특수문자 제거 (한글, 영문, 숫자, 하이픈만 허용)
+	reg := regexp.MustCompile(`[^\p{L}\p{N}-]+`)
+	slug = reg.ReplaceAllString(slug, "-")
+
+	// 연속된 하이픈을 하나로
+	reg = regexp.MustCompile(`-+`)
+	slug = reg.ReplaceAllString(slug, "-")
+
+	// 앞뒤 하이픈 제거
+	slug = strings.Trim(slug, "-")
+
+	// 소문자로 변환 (영문만)
+	slug = strings.ToLower(slug)
+
+	return slug
 }
