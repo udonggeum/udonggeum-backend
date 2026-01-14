@@ -53,8 +53,8 @@ type Store struct {
 	Floor       string         `gorm:"type:varchar(50)" json:"floor,omitempty"` // 층정보
 	Unit        string         `gorm:"type:varchar(50)" json:"unit,omitempty"`  // 호정보
 	PostalCode  string         `gorm:"type:varchar(10)" json:"postal_code,omitempty"` // 우편번호
-	Latitude    *float64       `gorm:"type:decimal(10,8)" json:"latitude"`   // 위도 (WGS84)
-	Longitude   *float64       `gorm:"type:decimal(11,8)" json:"longitude"`  // 경도 (WGS84)
+	Latitude    *float64       `gorm:"type:decimal(12,9)" json:"latitude"`   // 위도 (WGS84)
+	Longitude   *float64       `gorm:"type:decimal(13,9)" json:"longitude"`  // 경도 (WGS84)
 	PhoneNumber string         `gorm:"type:varchar(30)" json:"phone_number"` // 연락처
 	ImageURL    string         `json:"image_url"`                            // 매장 이미지
 	Description string         `gorm:"type:text" json:"description"`         // 매장 소개
