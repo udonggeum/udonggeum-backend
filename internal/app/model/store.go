@@ -39,12 +39,13 @@ func (s *StringArray) Scan(value interface{}) error {
 }
 
 type Store struct {
-	ID          uint           `gorm:"primarykey" json:"id"`     // 고유 매장 ID
-	UserID      *uint          `gorm:"index" json:"user_id"`     // 매장 소유자 ID (nullable - 비관리매장은 null)
-	User        User           `gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT" json:"owner,omitempty"`
-	Name        string         `gorm:"not null" json:"name"`                 // 매장명
-	BranchName  string         `gorm:"type:varchar(100)" json:"branch_name,omitempty"` // 지점명
-	Slug        string         `gorm:"uniqueIndex" json:"slug"`              // URL용 고유 식별자 (SEO)
+	ID             uint           `gorm:"primarykey" json:"id"`     // 고유 매장 ID
+	BusinessNumber string         `gorm:"uniqueIndex;type:varchar(50)" json:"business_number,omitempty"` // 상가업소번호 (공공데이터 고유ID)
+	UserID         *uint          `gorm:"index" json:"user_id"`     // 매장 소유자 ID (nullable - 비관리매장은 null)
+	User           User           `gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT" json:"owner,omitempty"`
+	Name           string         `gorm:"not null" json:"name"`                 // 매장명
+	BranchName     string         `gorm:"type:varchar(100)" json:"branch_name,omitempty"` // 지점명
+	Slug           string         `gorm:"uniqueIndex" json:"slug"`              // URL용 고유 식별자 (SEO)
 	Region      string         `gorm:"index;not null" json:"region"`         // 시·도
 	District    string         `gorm:"index;not null" json:"district"`       // 구·군
 	Dong        string         `gorm:"type:varchar(100)" json:"dong,omitempty"` // 행정동명
@@ -75,11 +76,6 @@ type Store struct {
 	// 매장 태그 (Many-to-Many 관계)
 	Tags []Tag `gorm:"many2many:store_tags;" json:"tags,omitempty"`
 
-	// [Deprecated] 매입 가능 여부 필드 - tags로 이관 예정
-	BuyingGold     bool `gorm:"default:false" json:"buying_gold,omitempty"`     // 금 매입 가능 여부
-	BuyingPlatinum bool `gorm:"default:false" json:"buying_platinum,omitempty"` // 백금 매입 가능 여부
-	BuyingSilver   bool `gorm:"default:false" json:"buying_silver,omitempty"`   // 은 매입 가능 여부
-
 	CreatedAt time.Time      `json:"created_at"` // 생성 시각
 	UpdatedAt time.Time      `json:"updated_at"` // 수정 시각
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"` // 삭제 시각(소프트 삭제)
@@ -106,9 +102,9 @@ func (StoreLike) TableName() string {
 }
 
 // generateSlug는 매장명과 지역 정보로 URL용 slug를 생성합니다
-func generateSlug(district, name string) string {
+func generateSlug(region, district, name string) string {
 	// 공백을 하이픈으로 변경
-	slug := fmt.Sprintf("%s-%s", district, name)
+	slug := fmt.Sprintf("%s-%s-%s", region, district, name)
 
 	// 특수문자 제거 (한글, 영문, 숫자, 하이픈만 허용)
 	reg := regexp.MustCompile(`[^\p{L}\p{N}-]+`)
@@ -130,7 +126,7 @@ func generateSlug(district, name string) string {
 // BeforeCreate는 매장 생성 전에 slug를 자동 생성합니다
 func (s *Store) BeforeCreate(tx *gorm.DB) error {
 	if s.Slug == "" {
-		baseSlug := generateSlug(s.District, s.Name)
+		baseSlug := generateSlug(s.Region, s.District, s.Name)
 		slug := baseSlug
 
 		// 중복 체크 및 숫자 붙이기
@@ -163,8 +159,8 @@ func (s *Store) BeforeUpdate(tx *gorm.DB) error {
 	}
 
 	// 이름이나 지역이 변경되었는지 확인
-	if s.Name != oldStore.Name || s.District != oldStore.District {
-		baseSlug := generateSlug(s.District, s.Name)
+	if s.Name != oldStore.Name || s.Region != oldStore.Region || s.District != oldStore.District {
+		baseSlug := generateSlug(s.Region, s.District, s.Name)
 		slug := baseSlug
 
 		// 중복 체크 (자기 자신은 제외)

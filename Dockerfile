@@ -24,9 +24,16 @@ RUN apk --no-cache add ca-certificates tzdata
 # 작업 디렉토리 설정
 WORKDIR /root/
 
+# 데이터 디렉토리 생성
+RUN mkdir -p /app/data
+
 # 빌드된 실행 파일 복사
 COPY --from=builder /app/app .
 COPY --from=builder /app/seed .
+
+# 스크립트 복사
+COPY scripts/import_all.sh /root/import_all.sh
+RUN chmod +x /root/import_all.sh
 
 # 포트 (네 서버에서 사용하는 포트로 맞춰)
 EXPOSE 8080

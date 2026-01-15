@@ -4,6 +4,7 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type StoreFilter struct {
@@ -11,7 +12,12 @@ type StoreFilter struct {
 	District        string
 	Search          string
 	IncludeProducts bool
-	BuyingGold      bool // 금 매입 가능 매장만 조회
+	IsVerified      *bool    // 인증 매장 필터
+	IsManaged       *bool    // 관리 매장 필터
+	Page            int      // 페이지 번호 (1부터 시작)
+	PageSize        int      // 페이지당 개수
+	UserLat         *float64 // 사용자 위도 (거리순 정렬용)
+	UserLng         *float64 // 사용자 경도 (거리순 정렬용)
 }
 
 type StoreLocation struct {
@@ -20,11 +26,16 @@ type StoreLocation struct {
 	StoreCount int64
 }
 
+type StoreListResult struct {
+	Stores     []model.Store
+	TotalCount int64
+}
+
 type StoreRepository interface {
 	Create(store *model.Store) error
 	Update(store *model.Store) error
 	Delete(id uint) error
-	FindAll(filter StoreFilter) ([]model.Store, error)
+	FindAll(filter StoreFilter) (*StoreListResult, error)
 	FindByID(id uint, includeProducts bool) (*model.Store, error)
 	FindByUserID(userID uint) ([]model.Store, error)
 	FindSingleByUserID(userID uint) (*model.Store, error)
@@ -116,11 +127,17 @@ func (r *storeRepository) Delete(id uint) error {
 	return nil
 }
 
-func (r *storeRepository) FindAll(filter StoreFilter) ([]model.Store, error) {
+func (r *storeRepository) FindAll(filter StoreFilter) (*StoreListResult, error) {
 	logger.Debug("Finding stores", map[string]interface{}{
-		"region":   filter.Region,
-		"district": filter.District,
-		"search":   filter.Search,
+		"region":      filter.Region,
+		"district":    filter.District,
+		"search":      filter.Search,
+		"is_verified": filter.IsVerified,
+		"is_managed":  filter.IsManaged,
+		"page":        filter.Page,
+		"page_size":   filter.PageSize,
+		"user_lat":    filter.UserLat,
+		"user_lng":    filter.UserLng,
 	})
 
 	query := r.db.Model(&model.Store{}).Preload("Tags")
@@ -130,6 +147,7 @@ func (r *storeRepository) FindAll(filter StoreFilter) ([]model.Store, error) {
 		})
 	}
 
+	// 기본 필터
 	if filter.Region != "" {
 		query = query.Where("region = ?", filter.Region)
 	}
@@ -138,10 +156,120 @@ func (r *storeRepository) FindAll(filter StoreFilter) ([]model.Store, error) {
 	}
 	if filter.Search != "" {
 		like := "%" + filter.Search + "%"
-		query = query.Where("name LIKE ?", like)
+		// 매장명, 지역, 시군구, 동, 주소 모두 검색
+		query = query.Where(
+			"name LIKE ? OR region LIKE ? OR district LIKE ? OR dong LIKE ? OR address LIKE ?",
+			like, like, like, like, like,
+		)
 	}
-	if filter.BuyingGold {
-		query = query.Where("buying_gold = ?", true)
+
+	// 인증/관리 필터
+	if filter.IsVerified != nil {
+		query = query.Where("is_verified = ?", *filter.IsVerified)
+	}
+	if filter.IsManaged != nil {
+		query = query.Where("is_managed = ?", *filter.IsManaged)
+	}
+
+	// 사용자 위치 기반 거리 계산 및 정렬
+	if filter.UserLat != nil && filter.UserLng != nil {
+		// MySQL/MariaDB의 Haversine 공식을 사용한 거리 계산
+		// 결과는 km 단위
+		distanceFormula := `(6371 * acos(
+			cos(radians(?)) * cos(radians(latitude)) *
+			cos(radians(longitude) - radians(?)) +
+			sin(radians(?)) * sin(radians(latitude))
+		))`
+
+		// SELECT 절에 distance 컬럼 추가
+		query = query.Select("stores.*, " + distanceFormula + " AS distance",
+			*filter.UserLat, *filter.UserLng, *filter.UserLat)
+
+		// 총 개수 조회 (SELECT distance 추가 전)
+		countQuery := r.db.Model(&model.Store{})
+		if filter.Region != "" {
+			countQuery = countQuery.Where("region = ?", filter.Region)
+		}
+		if filter.District != "" {
+			countQuery = countQuery.Where("district = ?", filter.District)
+		}
+		if filter.Search != "" {
+			like := "%" + filter.Search + "%"
+			// 매장명, 지역, 시군구, 동, 주소 모두 검색
+			countQuery = countQuery.Where(
+				"name LIKE ? OR region LIKE ? OR district LIKE ? OR dong LIKE ? OR address LIKE ?",
+				like, like, like, like, like,
+			)
+		}
+		if filter.IsVerified != nil {
+			countQuery = countQuery.Where("is_verified = ?", *filter.IsVerified)
+		}
+		if filter.IsManaged != nil {
+			countQuery = countQuery.Where("is_managed = ?", *filter.IsManaged)
+		}
+
+		var totalCount int64
+		if err := countQuery.Count(&totalCount).Error; err != nil {
+			logger.Error("Failed to count stores", err, map[string]interface{}{
+				"region":   filter.Region,
+				"district": filter.District,
+			})
+			return nil, err
+		}
+
+		// 거리순 정렬 후 페이지네이션 적용
+		query = query.Order("distance ASC, name ASC")
+
+		// 페이지네이션 적용
+		if filter.Page > 0 && filter.PageSize > 0 {
+			offset := (filter.Page - 1) * filter.PageSize
+			query = query.Offset(offset).Limit(filter.PageSize)
+		}
+
+		var stores []model.Store
+		if err := query.Find(&stores).Error; err != nil {
+			logger.Error("Failed to find stores with distance sorting", err, map[string]interface{}{
+				"region":   filter.Region,
+				"district": filter.District,
+				"user_lat": *filter.UserLat,
+				"user_lng": *filter.UserLng,
+			})
+			return nil, err
+		}
+
+		if err := r.populateStoreStats(&stores); err != nil {
+			logger.Error("Failed to populate store stats", err, nil)
+			return nil, err
+		}
+
+		logger.Debug("Stores found and sorted by distance", map[string]interface{}{
+			"count":       len(stores),
+			"total_count": totalCount,
+			"user_lat":    *filter.UserLat,
+			"user_lng":    *filter.UserLng,
+		})
+
+		return &StoreListResult{
+			Stores:     stores,
+			TotalCount: totalCount,
+		}, nil
+	}
+
+	// 사용자 위치가 없는 경우 기본 가나다순 정렬
+	// 총 개수 조회
+	var totalCount int64
+	if err := query.Count(&totalCount).Error; err != nil {
+		logger.Error("Failed to count stores", err, map[string]interface{}{
+			"region":   filter.Region,
+			"district": filter.District,
+		})
+		return nil, err
+	}
+
+	// 페이지네이션 적용
+	if filter.Page > 0 && filter.PageSize > 0 {
+		offset := (filter.Page - 1) * filter.PageSize
+		query = query.Offset(offset).Limit(filter.PageSize)
 	}
 
 	var stores []model.Store
@@ -159,9 +287,14 @@ func (r *storeRepository) FindAll(filter StoreFilter) ([]model.Store, error) {
 	}
 
 	logger.Debug("Stores found", map[string]interface{}{
-		"count": len(stores),
+		"count":       len(stores),
+		"total_count": totalCount,
 	})
-	return stores, nil
+
+	return &StoreListResult{
+		Stores:     stores,
+		TotalCount: totalCount,
+	}, nil
 }
 
 func (r *storeRepository) FindByID(id uint, includeProducts bool) (*model.Store, error) {
@@ -525,22 +658,30 @@ func (r *storeRepository) UpdateVerification(verification *model.StoreVerificati
 	return nil
 }
 
-// BulkCreate creates multiple stores in batches
+// BulkCreate creates or updates multiple stores in batches (UPSERT)
 func (r *storeRepository) BulkCreate(stores []model.Store, batchSize int) error {
-	logger.Info("Bulk creating stores", map[string]interface{}{
+	logger.Info("Bulk creating/updating stores", map[string]interface{}{
 		"total_count": len(stores),
 		"batch_size":  batchSize,
 	})
 
-	if err := r.db.CreateInBatches(stores, batchSize).Error; err != nil {
-		logger.Error("Failed to bulk create stores", err, map[string]interface{}{
+	// UPSERT: business_number가 중복되면 업데이트
+	if err := r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "business_number"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"name", "branch_name", "slug", "region", "district", "dong",
+			"address", "building_name", "floor", "unit", "postal_code",
+			"longitude", "latitude", "updated_at",
+		}),
+	}).CreateInBatches(stores, batchSize).Error; err != nil {
+		logger.Error("Failed to bulk create/update stores", err, map[string]interface{}{
 			"total_count": len(stores),
 			"batch_size":  batchSize,
 		})
 		return err
 	}
 
-	logger.Info("Bulk create completed", map[string]interface{}{
+	logger.Info("Bulk create/update completed", map[string]interface{}{
 		"count": len(stores),
 	})
 	return nil

@@ -67,7 +67,6 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 
 	includeProducts := strings.EqualFold(c.DefaultQuery("include_products", "false"), "true")
-	buyingGold := strings.EqualFold(c.DefaultQuery("buying", "false"), "true")
 
 	// Parse user location if provided
 	var userLat, userLng *float64
@@ -82,12 +81,28 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 		}
 	}
 
-	// Parse page_size if provided (for limiting results)
-	var pageSize int
+	// Parse pagination parameters
+	var page, pageSize int
+	if pageStr := c.Query("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
 	if pageSizeStr := c.Query("page_size"); pageSizeStr != "" {
 		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
 			pageSize = ps
 		}
+	}
+
+	// Parse filter parameters
+	var isVerified, isManaged *bool
+	if verifiedStr := c.Query("is_verified"); verifiedStr != "" {
+		verified := strings.EqualFold(verifiedStr, "true")
+		isVerified = &verified
+	}
+	if managedStr := c.Query("is_managed"); managedStr != "" {
+		managed := strings.EqualFold(managedStr, "true")
+		isManaged = &managed
 	}
 
 	opts := service.StoreListOptions{
@@ -95,12 +110,15 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 		District:        c.Query("district"),
 		Search:          c.Query("search"),
 		IncludeProducts: includeProducts,
-		BuyingGold:      buyingGold,
 		UserLat:         userLat,
 		UserLng:         userLng,
+		IsVerified:      isVerified,
+		IsManaged:       isManaged,
+		Page:            page,
+		PageSize:        pageSize,
 	}
 
-	stores, err := ctrl.storeService.ListStores(opts)
+	result, err := ctrl.storeService.ListStores(opts)
 	if err != nil {
 		log.Error("Failed to list stores", err, nil)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -109,15 +127,10 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 		return
 	}
 
-	// Apply page_size limit if provided
-	if pageSize > 0 && len(stores) > pageSize {
-		stores = stores[:pageSize]
-	}
-
 	// 인증된 사용자의 경우 좋아요 상태 포함
 	response := gin.H{
-		"stores": stores,
-		"count":  len(stores),
+		"stores": result.Stores,
+		"count":  result.TotalCount,
 	}
 
 	if userID, exists := middleware.GetUserID(c); exists {
@@ -130,15 +143,22 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 			}
 
 			// 각 매장에 is_liked 추가
-			storesWithLikes := make([]map[string]interface{}, len(stores))
-			for i, store := range stores {
+			storesWithLikes := make([]map[string]interface{}, len(result.Stores))
+			for i, store := range result.Stores {
 				storeMap := map[string]interface{}{
 					"id":               store.ID,
 					"user_id":          store.UserID,
 					"name":             store.Name,
+					"branch_name":      store.BranchName,
+					"slug":             store.Slug,
 					"region":           store.Region,
 					"district":         store.District,
+					"dong":             store.Dong,
 					"address":          store.Address,
+					"building_name":    store.BuildingName,
+					"floor":            store.Floor,
+					"unit":             store.Unit,
+					"postal_code":      store.PostalCode,
 					"latitude":         store.Latitude,
 					"longitude":        store.Longitude,
 					"phone_number":     store.PhoneNumber,
@@ -147,9 +167,9 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 					"open_time":        store.OpenTime,
 					"close_time":       store.CloseTime,
 					"tags":             store.Tags,
-					"buying_gold":      store.BuyingGold,
-					"buying_platinum":  store.BuyingPlatinum,
-					"buying_silver":    store.BuyingSilver,
+					"is_managed":       store.IsManaged,
+					"is_verified":      store.IsVerified,
+					"verified_at":      store.VerifiedAt,
 					"created_at":       store.CreatedAt,
 					"updated_at":       store.UpdatedAt,
 					"is_liked":         likedMap[store.ID],
@@ -161,7 +181,10 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 	}
 
 	log.Info("Stores listed", map[string]interface{}{
-		"count": len(stores),
+		"count":       len(result.Stores),
+		"total_count": result.TotalCount,
+		"page":        page,
+		"page_size":   pageSize,
 	})
 
 	c.JSON(http.StatusOK, response)

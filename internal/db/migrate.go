@@ -6,7 +6,6 @@ import (
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
-	"github.com/ikkim/udonggeum-backend/pkg/util"
 )
 
 // Migrate runs database migrations
@@ -40,12 +39,6 @@ func Migrate() error {
 		return err
 	}
 
-	// 기존 stores 테이블의 사업자 정보를 business_registrations 테이블로 마이그레이션
-	if err := migrateBusinessRegistrations(); err != nil {
-		logger.Error("Failed to migrate business registrations", err)
-		return err
-	}
-
 	if err := seedInitialData(); err != nil {
 		logger.Error("Failed to seed initial data during migration", err)
 		return err
@@ -63,186 +56,15 @@ func Seed() error {
 }
 
 func seedInitialData() error {
-	logger.Info("Seeding database...")
+	logger.Info("Seeding initial data...")
 
-	var storeCount int64
-	if err := DB.Model(&model.Store{}).Count(&storeCount).Error; err != nil {
-		logger.Error("Failed to check store count before seeding", err)
-		return err
-	}
-
-	if storeCount > 0 {
-		logger.Info("Store data already seeded, skipping store seeding...", map[string]interface{}{
-			"existing_stores": storeCount,
-		})
-		// Store 데이터는 스킵하지만 금 시세는 별도로 체크
-		if err := seedGoldPrices(); err != nil {
-			logger.Error("Failed to seed gold prices", err)
-			return err
-		}
-		return nil
-	}
-
-	adminPassword, err := util.HashPassword("test12!@")
-	if err != nil {
-		logger.Error("Failed to hash admin password", err)
-		return err
-	}
-
-	admin := model.User{
-		Email:        "test@test.com",
-		PasswordHash: adminPassword,
-		Name:         "관리자",
-		Role:         model.RoleAdmin,
-	}
-
-	if err := DB.Where("email = ?", admin.Email).
-		Attrs(admin).
-		FirstOrCreate(&admin).Error; err != nil {
-		logger.Error("Failed to seed admin user", err)
-		return err
-	}
-
-	stores := []model.Store{
-		{
-			Name:           "서울 강남 금은방",
-			Region:         "서울특별시",
-			District:       "강남구",
-			Address:        "서울특별시 강남구 테헤란로 231",
-			Latitude:       func() *float64 { lat := 37.5029; return &lat }(),
-			Longitude:      func() *float64 { lng := 127.0398; return &lng }(),
-			PhoneNumber:    "02-6201-1100",
-			ImageURL:       "https://cdn.udonggeum.com/stores/seoul-gangnam.jpg",
-			Description:    "프리미엄 금 매입 전문점",
-			BuyingGold:     true,
-			BuyingPlatinum: true,
-			BuyingSilver:   true,
-			IsManaged:      true, // 관리매장
-		},
-		{
-			Name:           "서울 마포 금은방",
-			Region:         "서울특별시",
-			District:       "마포구",
-			Address:        "서울특별시 마포구 와우산로 94",
-			Latitude:       func() *float64 { lat := 37.5490; return &lat }(),
-			Longitude:      func() *float64 { lng := 126.9251; return &lng }(),
-			PhoneNumber:    "02-6284-9077",
-			ImageURL:       "https://cdn.udonggeum.com/stores/seoul-mapo.jpg",
-			Description:    "지역 밀착형 금 매입 전문점",
-			BuyingGold:     true,
-			BuyingPlatinum: false,
-			BuyingSilver:   true,
-			IsManaged:      true, // 관리매장
-		},
-		{
-			Name:           "부산 해운대 금은방",
-			Region:         "부산광역시",
-			District:       "해운대구",
-			Address:        "부산광역시 해운대구 해운대로 570",
-			Latitude:       func() *float64 { lat := 35.1586; return &lat }(),
-			Longitude:      func() *float64 { lng := 129.1603; return &lng }(),
-			PhoneNumber:    "051-730-1122",
-			ImageURL:       "https://cdn.udonggeum.com/stores/busan-haeundae.jpg",
-			Description:    "부산 최대 규모 금 매입 전문점",
-			BuyingGold:     true,
-			BuyingPlatinum: true,
-			BuyingSilver:   true,
-			IsManaged:      true, // 관리매장
-		},
-		{
-			Name:           "부산 남포 금은방",
-			Region:         "부산광역시",
-			District:       "중구",
-			Address:        "부산광역시 중구 광복로 55",
-			Latitude:       func() *float64 { lat := 35.0985; return &lat }(),
-			Longitude:      func() *float64 { lng := 129.0297; return &lng }(),
-			PhoneNumber:    "051-245-7755",
-			ImageURL:       "https://cdn.udonggeum.com/stores/busan-nampo.jpg",
-			Description:    "전통 금 매입 전문점",
-			BuyingGold:     true,
-			BuyingPlatinum: true,
-			BuyingSilver:   false,
-			IsManaged:      true, // 관리매장
-		},
-		{
-			Name:           "대구 동성로 금은방",
-			Region:         "대구광역시",
-			District:       "중구",
-			Address:        "대구광역시 중구 동성로4길 91",
-			Latitude:       func() *float64 { lat := 35.8691; return &lat }(),
-			Longitude:      func() *float64 { lng := 128.5936; return &lng }(),
-			PhoneNumber:    "053-222-4411",
-			ImageURL:       "https://cdn.udonggeum.com/stores/daegu-dongseongno.jpg",
-			Description:    "대구 중심가 금 매입 전문점",
-			BuyingGold:     true,
-			BuyingPlatinum: false,
-			BuyingSilver:   true,
-			IsManaged:      true, // 관리매장
-		},
-		{
-			Name:           "광주 충장로 금은방",
-			Region:         "광주광역시",
-			District:       "동구",
-			Address:        "광주광역시 동구 충장로 73",
-			Latitude:       func() *float64 { lat := 35.1483; return &lat }(),
-			Longitude:      func() *float64 { lng := 126.9174; return &lng }(),
-			PhoneNumber:    "062-228-9090",
-			ImageURL:       "https://cdn.udonggeum.com/stores/gwangju-chungjang.jpg",
-			Description:    "광주 대표 금 매입 전문점",
-			BuyingGold:     true,
-			BuyingPlatinum: true,
-			BuyingSilver:   true,
-			IsManaged:      true, // 관리매장
-		},
-		{
-			Name:           "제주 신제주 금은방",
-			Region:         "제주특별자치도",
-			District:       "제주시",
-			Address:        "제주특별자치도 제주시 연북로 567",
-			Latitude:       func() *float64 { lat := 33.4890; return &lat }(),
-			Longitude:      func() *float64 { lng := 126.4914; return &lng }(),
-			PhoneNumber:    "064-723-5565",
-			ImageURL:       "https://cdn.udonggeum.com/stores/jeju-shinjeju.jpg",
-			Description:    "제주 유일 금 매입 전문점",
-			BuyingGold:     true,
-			BuyingPlatinum: false,
-			BuyingSilver:   true,
-			IsManaged:      true, // 관리매장
-		},
-	}
-
-	totalStores := 0
-
-	for _, store := range stores {
-		store.UserID = &admin.ID
-
-		var createdStore model.Store
-		if err := DB.Where("name = ?", store.Name).
-			Attrs(store).
-			FirstOrCreate(&createdStore).Error; err != nil {
-			logger.Error("Failed to seed store", err, map[string]interface{}{
-				"store": store.Name,
-			})
-			return err
-		}
-		totalStores++
-	}
-
-	// 금 시세 더미 데이터 생성 (최근 30일)
-	if err := seedGoldPrices(); err != nil {
-		logger.Error("Failed to seed gold prices", err)
-		return err
-	}
-
-	// 태그 데이터 생성
+	// 태그 데이터 생성 (필터링에 필요)
 	if err := seedTags(); err != nil {
 		logger.Error("Failed to seed tags", err)
 		return err
 	}
 
-	logger.Info("Database seeded successfully", map[string]interface{}{
-		"stores_count": totalStores,
-	})
+	logger.Info("Initial data seeded successfully")
 	return nil
 }
 
@@ -452,120 +274,5 @@ func seedStoreTags() error {
 		"stores_count": len(stores),
 	})
 
-	return nil
-}
-
-// migrateBusinessRegistrations 기존 stores 테이블의 사업자 정보를 business_registrations 테이블로 마이그레이션
-func migrateBusinessRegistrations() error {
-	logger.Info("Migrating business registrations from stores table...")
-
-	// stores 테이블에 business_number 컬럼이 있는지 확인
-	if !DB.Migrator().HasColumn(&model.Store{}, "business_number") {
-		logger.Info("business_number column not found in stores table, skipping migration")
-		return nil
-	}
-
-	// 기존 stores 데이터 조회 (사업자 정보가 있는 것만)
-	type OldStore struct {
-		ID                 uint
-		BusinessNumber     string
-		BusinessStartDate  string
-		RepresentativeName string
-		BusinessStatus     string
-		TaxType            string
-		IsVerified         bool
-		VerificationDate   *time.Time
-	}
-
-	var oldStores []OldStore
-	if err := DB.Table("stores").
-		Select("id, business_number, business_start_date, representative_name, business_status, tax_type, is_verified, verification_date").
-		Where("business_number != '' AND business_number IS NOT NULL").
-		Find(&oldStores).Error; err != nil {
-		logger.Error("Failed to query old stores with business info", err)
-		return err
-	}
-
-	if len(oldStores) == 0 {
-		logger.Info("No stores with business information found, skipping data migration")
-	} else {
-		logger.Info("Found stores with business information", map[string]interface{}{
-			"count": len(oldStores),
-		})
-
-		// business_registrations 테이블로 데이터 복사
-		for _, oldStore := range oldStores {
-			// 이미 존재하는지 확인
-			var existingCount int64
-			if err := DB.Model(&model.BusinessRegistration{}).
-				Where("store_id = ?", oldStore.ID).
-				Count(&existingCount).Error; err != nil {
-				logger.Error("Failed to check existing business registration", err)
-				return err
-			}
-
-			if existingCount > 0 {
-				logger.Info("Business registration already exists for store", map[string]interface{}{
-					"store_id": oldStore.ID,
-				})
-				continue
-			}
-
-			businessReg := model.BusinessRegistration{
-				StoreID:            oldStore.ID,
-				BusinessNumber:     oldStore.BusinessNumber,
-				BusinessStartDate:  oldStore.BusinessStartDate,
-				RepresentativeName: oldStore.RepresentativeName,
-				BusinessStatus:     oldStore.BusinessStatus,
-				TaxType:            oldStore.TaxType,
-				IsVerified:         oldStore.IsVerified,
-				VerificationDate:   oldStore.VerificationDate,
-			}
-
-			if err := DB.Create(&businessReg).Error; err != nil {
-				logger.Error("Failed to create business registration", err, map[string]interface{}{
-					"store_id": oldStore.ID,
-				})
-				return err
-			}
-
-			logger.Info("Migrated business registration", map[string]interface{}{
-				"store_id": oldStore.ID,
-			})
-		}
-
-		logger.Info("Business registrations migrated successfully", map[string]interface{}{
-			"count": len(oldStores),
-		})
-	}
-
-	// stores 테이블에서 사업자 정보 컬럼 삭제
-	columnsToDelete := []string{
-		"business_number",
-		"business_start_date",
-		"representative_name",
-		"business_status",
-		"tax_type",
-		"is_verified",
-		"verification_date",
-	}
-
-	for _, column := range columnsToDelete {
-		if DB.Migrator().HasColumn(&model.Store{}, column) {
-			if err := DB.Migrator().DropColumn(&model.Store{}, column); err != nil {
-				logger.Error("Failed to drop column from stores table", err, map[string]interface{}{
-					"column": column,
-				})
-				// 컬럼 삭제 실패는 치명적이지 않으므로 경고만 하고 계속 진행
-				logger.Warn("Continuing despite column drop failure", nil)
-			} else {
-				logger.Info("Dropped column from stores table", map[string]interface{}{
-					"column": column,
-				})
-			}
-		}
-	}
-
-	logger.Info("Business registration migration completed")
 	return nil
 }

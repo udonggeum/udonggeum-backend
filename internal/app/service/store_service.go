@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"sort"
 	"time"
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
@@ -22,9 +21,12 @@ type StoreListOptions struct {
 	District        string
 	Search          string
 	IncludeProducts bool
-	BuyingGold      bool     // 금 매입 가능 매장만 조회
 	UserLat         *float64 // 사용자 위도 (거리순 정렬용)
 	UserLng         *float64 // 사용자 경도 (거리순 정렬용)
+	IsVerified      *bool    // 인증 매장 필터
+	IsManaged       *bool    // 관리 매장 필터
+	Page            int      // 페이지 번호 (1부터 시작)
+	PageSize        int      // 페이지당 개수
 }
 
 type StoreLocationSummary struct {
@@ -34,7 +36,7 @@ type StoreLocationSummary struct {
 }
 
 type StoreService interface {
-	ListStores(opts StoreListOptions) ([]model.Store, error)
+	ListStores(opts StoreListOptions) (*repository.StoreListResult, error)
 	GetStoreByID(id uint, includeProducts bool) (*model.Store, error)
 	GetStoresByUserID(userID uint) ([]model.Store, error)
 	GetStoreByUserID(userID uint) (*model.Store, error)
@@ -84,75 +86,43 @@ func NewStoreService(storeRepo repository.StoreRepository, userRepo repository.U
 	}
 }
 
-func (s *storeService) ListStores(opts StoreListOptions) ([]model.Store, error) {
+func (s *storeService) ListStores(opts StoreListOptions) (*repository.StoreListResult, error) {
 	logger.Debug("Listing stores", map[string]interface{}{
-		"region":   opts.Region,
-		"district": opts.District,
-		"user_lat": opts.UserLat,
-		"user_lng": opts.UserLng,
+		"region":      opts.Region,
+		"district":    opts.District,
+		"is_verified": opts.IsVerified,
+		"is_managed":  opts.IsManaged,
+		"page":        opts.Page,
+		"page_size":   opts.PageSize,
+		"user_lat":    opts.UserLat,
+		"user_lng":    opts.UserLng,
 	})
 
-	stores, err := s.storeRepo.FindAll(repository.StoreFilter{
+	// Repository에서 거리 계산 및 정렬 처리
+	result, err := s.storeRepo.FindAll(repository.StoreFilter{
 		Region:          opts.Region,
 		District:        opts.District,
 		Search:          opts.Search,
 		IncludeProducts: opts.IncludeProducts,
-		BuyingGold:      opts.BuyingGold,
+		IsVerified:      opts.IsVerified,
+		IsManaged:       opts.IsManaged,
+		Page:            opts.Page,
+		PageSize:        opts.PageSize,
+		UserLat:         opts.UserLat,
+		UserLng:         opts.UserLng,
 	})
 	if err != nil {
 		logger.Error("Failed to list stores", err)
 		return nil, err
 	}
 
-	// If user location provided, sort by distance
-	if opts.UserLat != nil && opts.UserLng != nil {
-		type storeWithDistance struct {
-			store    model.Store
-			distance float64
-		}
-
-		storesWithDistance := make([]storeWithDistance, 0, len(stores))
-
-		for _, store := range stores {
-			// Calculate distance if store has coordinates
-			distance := 999999.0 // Default large distance for stores without coordinates
-			if store.Latitude != nil && store.Longitude != nil {
-				distance = util.CalculateDistance(
-					*opts.UserLat, *opts.UserLng,
-					*store.Latitude, *store.Longitude,
-				)
-			}
-
-			storesWithDistance = append(storesWithDistance, storeWithDistance{
-				store:    store,
-				distance: distance,
-			})
-		}
-
-		// Sort by distance
-		sort.Slice(storesWithDistance, func(i, j int) bool {
-			return storesWithDistance[i].distance < storesWithDistance[j].distance
-		})
-
-		// Extract sorted stores
-		sortedStores := make([]model.Store, len(storesWithDistance))
-		for i, swd := range storesWithDistance {
-			sortedStores[i] = swd.store
-		}
-
-		logger.Info("Stores fetched and sorted by distance", map[string]interface{}{
-			"count":    len(sortedStores),
-			"user_lat": *opts.UserLat,
-			"user_lng": *opts.UserLng,
-		})
-
-		return sortedStores, nil
-	}
-
 	logger.Info("Stores fetched", map[string]interface{}{
-		"count": len(stores),
+		"count":       len(result.Stores),
+		"total_count": result.TotalCount,
+		"user_lat":    opts.UserLat,
+		"user_lng":    opts.UserLng,
 	})
-	return stores, nil
+	return result, nil
 }
 
 func (s *storeService) GetStoreByID(id uint, includeProducts bool) (*model.Store, error) {

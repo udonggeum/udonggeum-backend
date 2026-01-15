@@ -106,30 +106,43 @@ func readStoresFromXLSX(filePath string) ([]model.Store, error) {
 			continue
 		}
 
-		// 필수 컬럼 수 확인 (총 38개 컬럼)
-		if len(row) < 38 {
+		// 필수 컬럼 수 확인 (총 39개 컬럼)
+		if len(row) < 39 {
 			skippedCount++
 			continue
 		}
 
 		// 데이터 추출
 		// 인덱스는 0부터 시작
+		businessNumber := strings.TrimSpace(row[0]) // 상가업소번호
 		name := strings.TrimSpace(row[1])          // 상호명
 		branchName := strings.TrimSpace(row[2])    // 지점명
 		region := strings.TrimSpace(row[12])       // 시도명
 		district := strings.TrimSpace(row[14])     // 시군구명
 		dong := strings.TrimSpace(row[16])         // 행정동명
 		jibunAddr := strings.TrimSpace(row[24])    // 지번주소
-		buildingName := strings.TrimSpace(row[29]) // 건물명
-		roadAddr := strings.TrimSpace(row[30])     // 도로명주소
-		postalCode := strings.TrimSpace(row[33])   // 신우편번호
-		floor := strings.TrimSpace(row[34])        // 층정보
-		unit := strings.TrimSpace(row[35])         // 호정보
-		longitudeStr := strings.TrimSpace(row[36]) // 경도
-		latitudeStr := strings.TrimSpace(row[37])  // 위도
+		buildingName := strings.TrimSpace(row[30]) // 건물명 (수정: 29 → 30)
+		roadAddr := strings.TrimSpace(row[31])     // 도로명주소 (수정: 30 → 31)
+		postalCode := strings.TrimSpace(row[34])   // 신우편번호 (수정: 33 → 34)
+		floor := strings.TrimSpace(row[35])        // 층정보 (수정: 34 → 35)
+		unit := strings.TrimSpace(row[36])         // 호정보 (수정: 35 → 36)
+		longitudeStr := strings.TrimSpace(row[37]) // 경도 (수정: 36 → 37)
+		latitudeStr := strings.TrimSpace(row[38])  // 위도 (수정: 37 → 38)
 
-		// 유효성 검사
-		if name == "" || region == "" || district == "" {
+		// 1. 기본 필수 항목 검사
+		if businessNumber == "" || name == "" || region == "" || district == "" {
+			skippedCount++
+			continue
+		}
+
+		// 2. 상호명 품질 검증
+		if !isValidStoreName(name) {
+			skippedCount++
+			continue
+		}
+
+		// 3. 주소 유효성 검증 (도로명주소나 지번주소 둘 중 하나는 필수)
+		if roadAddr == "" && jibunAddr == "" {
 			skippedCount++
 			continue
 		}
@@ -140,18 +153,19 @@ func readStoresFromXLSX(filePath string) ([]model.Store, error) {
 			address = jibunAddr
 		}
 
-		// 좌표 파싱
+		// 4. 좌표 유효성 검증 (경도/위도 둘 다 필수)
 		var longitude, latitude *float64
-		if lng, err := strconv.ParseFloat(longitudeStr, 64); err == nil && lng != 0 {
-			longitude = &lng
-		} else {
+		lng, errLng := strconv.ParseFloat(longitudeStr, 64)
+		lat, errLat := strconv.ParseFloat(latitudeStr, 64)
+
+		if errLng != nil || errLat != nil || lng == 0 || lat == 0 {
 			invalidCoordCount++
+			skippedCount++
+			continue
 		}
-		if lat, err := strconv.ParseFloat(latitudeStr, 64); err == nil && lat != 0 {
-			latitude = &lat
-		} else {
-			invalidCoordCount++
-		}
+
+		longitude = &lng
+		latitude = &lat
 
 		// 중복 체크 (이름+지역+주소 기준)
 		key := fmt.Sprintf("%s|%s|%s|%s", name, region, district, address)
@@ -162,7 +176,7 @@ func readStoresFromXLSX(filePath string) ([]model.Store, error) {
 		seenStores[key] = true
 
 		// Slug 생성 (중복 처리)
-		baseSlug := generateSlug(district, name)
+		baseSlug := generateSlug(region, district, name)
 		slug := baseSlug
 		if count, exists := slugCounter[baseSlug]; exists {
 			slugCounter[baseSlug] = count + 1
@@ -173,22 +187,23 @@ func readStoresFromXLSX(filePath string) ([]model.Store, error) {
 
 		// Store 모델 생성
 		store := model.Store{
-			Name:         name,
-			BranchName:   branchName,
-			Slug:         slug, // 미리 생성한 slug 사용
-			Region:       region,
-			District:     district,
-			Dong:         dong,
-			Address:      address,
-			BuildingName: buildingName,
-			Floor:        floor,
-			Unit:         unit,
-			PostalCode:   postalCode,
-			Longitude:    longitude,
-			Latitude:     latitude,
-			UserID:       nil,   // 비관리 매장
-			IsManaged:    false,
-			IsVerified:   false,
+			BusinessNumber: businessNumber,
+			Name:           name,
+			BranchName:     branchName,
+			Slug:           slug, // 미리 생성한 slug 사용
+			Region:         region,
+			District:       district,
+			Dong:           dong,
+			Address:        address,
+			BuildingName:   buildingName,
+			Floor:          floor,
+			Unit:           unit,
+			PostalCode:     postalCode,
+			Longitude:      longitude,
+			Latitude:       latitude,
+			UserID:         nil,   // 비관리 매장
+			IsManaged:      false,
+			IsVerified:     false,
 			// 기타 필드들은 기본값 사용
 		}
 
@@ -210,9 +225,9 @@ func readStoresFromXLSX(filePath string) ([]model.Store, error) {
 }
 
 // generateSlug는 매장명과 지역 정보로 URL용 slug를 생성합니다
-func generateSlug(district, name string) string {
+func generateSlug(region, district, name string) string {
 	// 공백을 하이픈으로 변경
-	slug := fmt.Sprintf("%s-%s", district, name)
+	slug := fmt.Sprintf("%s-%s-%s", region, district, name)
 
 	// 특수문자 제거 (한글, 영문, 숫자, 하이픈만 허용)
 	reg := regexp.MustCompile(`[^\p{L}\p{N}-]+`)
@@ -229,4 +244,27 @@ func generateSlug(district, name string) string {
 	slug = strings.ToLower(slug)
 
 	return slug
+}
+
+// isValidStoreName은 상호명이 유효한지 검증합니다
+func isValidStoreName(name string) bool {
+	// 1. 최소 길이 체크 (3글자 미만 제외)
+	nameRunes := []rune(name)
+	if len(nameRunes) < 3 {
+		return false
+	}
+
+	// 2. 숫자만 있는 경우 제외
+	numOnlyReg := regexp.MustCompile(`^[0-9]+$`)
+	if numOnlyReg.MatchString(name) {
+		return false
+	}
+
+	// 3. 특수문자만 있는 경우 제외 (공백, 구두점, 기호만)
+	specialOnlyReg := regexp.MustCompile(`^[\p{P}\p{S}\s]+$`)
+	if specialOnlyReg.MatchString(name) {
+		return false
+	}
+
+	return true
 }
