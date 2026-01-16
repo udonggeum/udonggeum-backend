@@ -93,12 +93,12 @@ func (s *notificationService) MarkAsRead(notificationID, userID uint) (*model.No
 	// 알림 조회
 	notification, err := s.repo.GetNotificationByID(notificationID)
 	if err != nil {
-		return nil, fmt.Errorf("notification not found")
+		return nil, fmt.Errorf("알림을 찾을 수 없습니다")
 	}
 
 	// 권한 확인
 	if notification.UserID != userID {
-		return nil, fmt.Errorf("unauthorized")
+		return nil, fmt.Errorf("권한이 없습니다")
 	}
 
 	// 이미 읽은 알림이면 그대로 반환
@@ -125,12 +125,12 @@ func (s *notificationService) DeleteNotification(notificationID, userID uint) er
 	// 알림 조회
 	notification, err := s.repo.GetNotificationByID(notificationID)
 	if err != nil {
-		return fmt.Errorf("notification not found")
+		return fmt.Errorf("알림을 찾을 수 없습니다")
 	}
 
 	// 권한 확인
 	if notification.UserID != userID {
-		return fmt.Errorf("unauthorized")
+		return fmt.Errorf("권한이 없습니다")
 	}
 
 	return s.repo.DeleteNotification(notificationID)

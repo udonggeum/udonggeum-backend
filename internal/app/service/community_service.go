@@ -72,7 +72,7 @@ func (s *communityService) CreatePost(req *model.CreatePostRequest, userID uint,
 
 		// buy_gold 타입인데 매장이 없으면 에러
 		if req.Type == model.TypeBuyGold && len(user.Stores) == 0 {
-			return nil, fmt.Errorf("you must have at least one store to create buy_gold posts")
+			return nil, fmt.Errorf("금거래 게시글은 매장을 소유한 사용자만 작성할 수 있습니다")
 		}
 
 		// 매장이 있으면 첫 번째 매장 사용 (TODO: 나중에 여러 매장이 있을 때 선택하는 UI 필요)
@@ -118,12 +118,12 @@ func (s *communityService) CreatePost(req *model.CreatePostRequest, userID uint,
 func (s *communityService) validatePostCreation(req *model.CreatePostRequest, userRole model.UserRole) error {
 	// FAQ는 관리자만 작성 가능
 	if req.Type == model.TypeFAQ && userRole != model.RoleAdmin {
-		return fmt.Errorf("only admin can create FAQ posts")
+		return fmt.Errorf("FAQ는 관리자만 작성할 수 있습니다")
 	}
 
 	// 금 매입 글은 사장님(admin)만 작성 가능
 	if req.Type == model.TypeBuyGold && userRole != model.RoleAdmin {
-		return fmt.Errorf("only store owners can create buy_gold posts")
+		return fmt.Errorf("금거래 게시글은 매장 소유자만 작성할 수 있습니다")
 	}
 
 	// StoreID는 사용자 입력으로 받지 않음 (자동으로 설정됨)
@@ -172,7 +172,7 @@ func (s *communityService) UpdatePost(id uint, req *model.UpdatePostRequest, use
 
 	// 권한 검증 (작성자 본인 또는 관리자만 수정 가능)
 	if post.UserID != userID && userRole != model.RoleAdmin {
-		return nil, fmt.Errorf("permission denied")
+		return nil, fmt.Errorf("권한이 없습니다")
 	}
 
 	// 수정 가능한 필드만 업데이트
@@ -223,7 +223,7 @@ func (s *communityService) DeletePost(id uint, userID uint, userRole model.UserR
 
 	// 권한 검증 (작성자 본인 또는 관리자만 삭제 가능)
 	if post.UserID != userID && userRole != model.RoleAdmin {
-		return fmt.Errorf("permission denied")
+		return fmt.Errorf("권한이 없습니다")
 	}
 
 	return s.repo.DeletePost(id)
@@ -234,7 +234,7 @@ func (s *communityService) CreateComment(req *model.CreateCommentRequest, userID
 	// 게시글 존재 여부 확인
 	post, err := s.repo.GetPostByID(req.PostID, false)
 	if err != nil {
-		return nil, fmt.Errorf("post not found")
+		return nil, fmt.Errorf("게시글을 찾을 수 없습니다")
 	}
 
 	// 부모 댓글 존재 여부 확인 (대댓글인 경우)
@@ -282,7 +282,7 @@ func (s *communityService) UpdateComment(id uint, req *model.UpdateCommentReques
 
 	// 권한 검증 (작성자 본인 또는 관리자만 수정 가능)
 	if comment.UserID != userID && userRole != model.RoleAdmin {
-		return nil, fmt.Errorf("permission denied")
+		return nil, fmt.Errorf("권한이 없습니다")
 	}
 
 	if req.Content != nil {
@@ -305,7 +305,7 @@ func (s *communityService) DeleteComment(id uint, userID uint, userRole model.Us
 
 	// 권한 검증 (작성자 본인 또는 관리자만 삭제 가능)
 	if comment.UserID != userID && userRole != model.RoleAdmin {
-		return fmt.Errorf("permission denied")
+		return fmt.Errorf("권한이 없습니다")
 	}
 
 	return s.repo.DeleteComment(id)
@@ -361,7 +361,7 @@ func (s *communityService) AcceptAnswer(postID, commentID, userID uint) error {
 
 	// QnA 카테고리인지 확인
 	if post.Category != model.CategoryQnA {
-		return fmt.Errorf("only QnA posts can have accepted answers")
+		return fmt.Errorf("QnA 게시글만 답변을 채택할 수 있습니다")
 	}
 
 	// 작성자 본인만 채택 가능

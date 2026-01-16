@@ -91,7 +91,7 @@ func main() {
 		cfg.Kakao.RedirectURI,
 	)
 	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
-	storeService := service.NewStoreService(storeRepo, userRepo)
+	storeService := service.NewStoreService(dbConn, storeRepo, userRepo)
 
 	goldPriceAPI := service.NewDefaultGoldPriceAPI(cfg.GoldPrice.APIURL, cfg.GoldPrice.APIKey)
 	goldPriceService := service.NewGoldPriceService(goldPriceRepo, goldPriceAPI)

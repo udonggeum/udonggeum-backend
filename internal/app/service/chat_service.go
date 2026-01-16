@@ -108,7 +108,7 @@ func (s *chatService) GetChatRoom(roomID, userID uint) (*model.ChatRoom, error) 
 
 	// 접근 권한 검증
 	if room.User1ID != userID && room.User2ID != userID {
-		return nil, errors.New("unauthorized access to chat room")
+		return nil, errors.New("채팅방 접근 권한이 없습니다")
 	}
 
 	return room, nil
@@ -363,12 +363,12 @@ func (s *chatService) UpdateMessage(messageID, userID uint, content string) (*mo
 
 	// 권한 검증: 본인이 작성한 메시지인지 확인
 	if message.SenderID != userID {
-		return nil, errors.New("unauthorized to update this message")
+		return nil, errors.New("메시지 수정 권한이 없습니다")
 	}
 
 	// 삭제된 메시지는 수정 불가
 	if message.IsDeleted {
-		return nil, errors.New("cannot update deleted message")
+		return nil, errors.New("삭제된 메시지는 수정할 수 없습니다")
 	}
 
 	// 메시지 수정
@@ -404,12 +404,12 @@ func (s *chatService) DeleteMessage(messageID, userID uint) error {
 
 	// 권한 검증: 본인이 작성한 메시지인지 확인
 	if message.SenderID != userID {
-		return errors.New("unauthorized to delete this message")
+		return errors.New("메시지 삭제 권한이 없습니다")
 	}
 
 	// 이미 삭제된 메시지
 	if message.IsDeleted {
-		return errors.New("message already deleted")
+		return errors.New("이미 삭제된 메시지입니다")
 	}
 
 	// 메시지 삭제

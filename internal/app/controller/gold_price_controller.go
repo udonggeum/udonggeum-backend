@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
+	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
 )
 
 // GoldPriceController 금 시세 컨트롤러
@@ -50,10 +51,7 @@ type UpdateGoldPriceRequest struct {
 func (ctrl *GoldPriceController) GetLatestPrices(c *gin.Context) {
 	prices, err := ctrl.goldPriceService.GetLatestPrices()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to fetch latest gold prices",
-			"message": err.Error(),
-		})
+		apperrors.InternalError(c, "금 시세 정보를 가져오는데 실패했습니다")
 		return
 	}
 
@@ -80,26 +78,17 @@ func (ctrl *GoldPriceController) GetPriceByType(c *gin.Context) {
 
 	// 유효한 금 유형인지 확인
 	if !isValidGoldPriceType(priceType) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid gold price type",
-			"message": "Valid types are: 24K, 18K, 14K, Platinum, Silver",
-		})
+		apperrors.BadRequest(c, apperrors.GoldInvalidType, "잘못된 금 종류입니다")
 		return
 	}
 
 	price, err := ctrl.goldPriceService.GetPriceByType(priceType)
 	if err != nil {
 		if err == service.ErrGoldPriceNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":   "Gold price not found",
-				"message": "No price data available for the specified type",
-			})
+			apperrors.NotFound(c, apperrors.GoldPriceNotFound, "금 시세 정보를 찾을 수 없습니다")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to fetch gold price",
-			"message": err.Error(),
-		})
+		apperrors.InternalError(c, "금 시세 정보를 가져오는데 실패했습니다")
 		return
 	}
 
@@ -127,19 +116,13 @@ func (ctrl *GoldPriceController) GetPriceHistory(c *gin.Context) {
 
 	// 유효한 금 유형인지 확인
 	if !isValidGoldPriceType(priceType) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid gold price type",
-			"message": "Valid types are: 24K, 18K, 14K, Platinum, Silver",
-		})
+		apperrors.BadRequest(c, apperrors.GoldInvalidType, "잘못된 금 종류입니다")
 		return
 	}
 
 	history, err := ctrl.goldPriceService.GetPriceHistory(priceType, period)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to fetch price history",
-			"message": err.Error(),
-		})
+		apperrors.InternalError(c, "금 시세 이력을 가져오는데 실패했습니다")
 		return
 	}
 
@@ -163,16 +146,13 @@ func (ctrl *GoldPriceController) GetPriceHistory(c *gin.Context) {
 func (ctrl *GoldPriceController) UpdateFromExternalAPI(c *gin.Context) {
 	err := ctrl.goldPriceService.UpdatePricesFromExternalAPI()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to update gold prices from external API",
-			"message": err.Error(),
-		})
+		apperrors.RespondWithError(c, http.StatusInternalServerError, apperrors.InternalExternalAPI, "외부 API에서 금 시세를 업데이트하는데 실패했습니다")
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Gold prices updated successfully",
+		"message": "금 시세가 성공적으로 업데이트되었습니다",
 	})
 }
 
@@ -192,19 +172,13 @@ func (ctrl *GoldPriceController) UpdateFromExternalAPI(c *gin.Context) {
 func (ctrl *GoldPriceController) CreatePrice(c *gin.Context) {
 	var req CreateGoldPriceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request",
-			"message": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "잘못된 요청입니다")
 		return
 	}
 
 	// 유효한 금 유형인지 확인
 	if !isValidGoldPriceType(req.Type) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid gold price type",
-			"message": "Valid types are: 24K, 18K, 14K, Platinum, Silver",
-		})
+		apperrors.BadRequest(c, apperrors.GoldInvalidType, "잘못된 금 종류입니다")
 		return
 	}
 
@@ -217,16 +191,13 @@ func (ctrl *GoldPriceController) CreatePrice(c *gin.Context) {
 	}
 
 	if err := ctrl.goldPriceService.CreatePrice(goldPrice); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to create gold price",
-			"message": err.Error(),
-		})
+		apperrors.InternalError(c, "금 시세를 생성하는데 실패했습니다")
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"message": "Gold price created successfully",
+		"message": "금 시세가 성공적으로 생성되었습니다",
 		"data":    goldPrice,
 	})
 }
@@ -248,19 +219,13 @@ func (ctrl *GoldPriceController) CreatePrice(c *gin.Context) {
 func (ctrl *GoldPriceController) UpdatePrice(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid gold price ID",
-			"message": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 금 시세 ID입니다")
 		return
 	}
 
 	var req UpdateGoldPriceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request",
-			"message": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "잘못된 요청입니다")
 		return
 	}
 
@@ -273,16 +238,13 @@ func (ctrl *GoldPriceController) UpdatePrice(c *gin.Context) {
 	}
 
 	if err := ctrl.goldPriceService.UpdatePrice(goldPrice); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to update gold price",
-			"message": err.Error(),
-		})
+		apperrors.InternalError(c, "금 시세를 업데이트하는데 실패했습니다")
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Gold price updated successfully",
+		"message": "금 시세가 성공적으로 업데이트되었습니다",
 	})
 }
 

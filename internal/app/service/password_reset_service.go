@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	ErrInvalidResetToken = errors.New("invalid or expired reset token")
-	ErrResetTokenExpired = errors.New("reset token has expired")
-	ErrResetTokenUsed    = errors.New("reset token has already been used")
+	ErrInvalidResetToken = errors.New("유효하지 않거나 만료된 비밀번호 재설정 토큰입니다")
+	ErrResetTokenExpired = errors.New("비밀번호 재설정 토큰이 만료되었습니다")
+	ErrResetTokenUsed    = errors.New("이미 사용된 비밀번호 재설정 토큰입니다")
 )
 
 const (

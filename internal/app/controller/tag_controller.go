@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
+	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
 )
 
@@ -38,9 +39,7 @@ func (ctrl *TagController) ListTags(c *gin.Context) {
 		log.Error("Failed to list tags", err, map[string]interface{}{
 			"category": category,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch tags",
-		})
+		apperrors.InternalError(c, "태그 조회에 실패했습니다")
 		return
 	}
 

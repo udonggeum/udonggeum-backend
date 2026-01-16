@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
+	"github.com/ikkim/udonggeum-backend/internal/errors"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
 	ws "github.com/ikkim/udonggeum-backend/internal/websocket"
 )
@@ -63,24 +64,20 @@ func (ctrl *ChatController) CreateChatRoom(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	var req CreateChatRoomRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Error("Invalid request", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request: " + err.Error(),
-		})
+		errors.BadRequest(c, errors.ValidationInvalidInput, "입력값이 올바르지 않습니다")
 		return
 	}
 
 	// 자기 자신과는 채팅 불가
 	if req.TargetUserID == userID {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Cannot create chat room with yourself",
-		})
+		errors.BadRequest(c, errors.ChatSelfRoomForbidden, "자기 자신과 채팅할 수 없습니다")
 		return
 	}
 
@@ -96,9 +93,7 @@ func (ctrl *ChatController) CreateChatRoom(c *gin.Context) {
 	room, isNew, err := ctrl.chatService.CreateOrGetChatRoom(userID, req.TargetUserID, req.Type, resourceID)
 	if err != nil {
 		log.Error("Failed to create chat room", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to create chat room",
-		})
+		errors.InternalError(c, "채팅방 생성에 실패했습니다")
 		return
 	}
 
@@ -119,7 +114,7 @@ func (ctrl *ChatController) GetChatRooms(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -129,9 +124,7 @@ func (ctrl *ChatController) GetChatRooms(c *gin.Context) {
 	rooms, total, err := ctrl.chatService.GetUserChatRooms(userID, page, pageSize)
 	if err != nil {
 		log.Error("Failed to get chat rooms", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get chat rooms",
-		})
+		errors.InternalError(c, "채팅방 목록 조회에 실패했습니다")
 		return
 	}
 
@@ -150,30 +143,24 @@ func (ctrl *ChatController) GetChatRoom(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	roomID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid room ID",
-		})
+		errors.BadRequest(c, errors.ValidationInvalidID, "잘못된 채팅방 ID입니다")
 		return
 	}
 
 	room, err := ctrl.chatService.GetChatRoom(uint(roomID), userID)
 	if err != nil {
 		if err.Error() == "unauthorized access to chat room" {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Unauthorized access to chat room",
-			})
+			errors.Forbidden(c, "해당 채팅방에 접근할 권한이 없습니다")
 			return
 		}
 		log.Error("Failed to get chat room", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get chat room",
-		})
+		errors.InternalError(c, "채팅방 조회에 실패했습니다")
 		return
 	}
 
@@ -188,15 +175,13 @@ func (ctrl *ChatController) GetMessages(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	roomID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid room ID",
-		})
+		errors.BadRequest(c, errors.ValidationInvalidID, "잘못된 채팅방 ID입니다")
 		return
 	}
 
@@ -206,15 +191,11 @@ func (ctrl *ChatController) GetMessages(c *gin.Context) {
 	messages, total, err := ctrl.chatService.GetChatRoomMessages(uint(roomID), userID, page, pageSize)
 	if err != nil {
 		if err.Error() == "unauthorized access to chat room" {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Unauthorized access to chat room",
-			})
+			errors.Forbidden(c, "해당 채팅방에 접근할 권한이 없습니다")
 			return
 		}
 		log.Error("Failed to get messages", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get messages",
-		})
+		errors.InternalError(c, "메시지 조회에 실패했습니다")
 		return
 	}
 
@@ -233,39 +214,31 @@ func (ctrl *ChatController) SendMessage(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	roomID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid room ID",
-		})
+		errors.BadRequest(c, errors.ValidationInvalidID, "잘못된 채팅방 ID입니다")
 		return
 	}
 
 	var req SendMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Error("Invalid request", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request: " + err.Error(),
-		})
+		errors.BadRequest(c, errors.ValidationInvalidInput, "입력값이 올바르지 않습니다")
 		return
 	}
 
 	message, err := ctrl.chatService.SendMessageWithFile(uint(roomID), userID, req.Content, req.MessageType, req.FileURL, req.FileName)
 	if err != nil {
 		if err.Error() == "unauthorized access to chat room" {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Unauthorized access to chat room",
-			})
+			errors.Forbidden(c, "해당 채팅방에 접근할 권한이 없습니다")
 			return
 		}
 		log.Error("Failed to send message", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to send message",
-		})
+		errors.InternalError(c, "메시지 전송에 실패했습니다")
 		return
 	}
 
@@ -285,29 +258,23 @@ func (ctrl *ChatController) MarkAsRead(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	roomID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid room ID",
-		})
+		errors.BadRequest(c, errors.ValidationInvalidID, "잘못된 채팅방 ID입니다")
 		return
 	}
 
 	if err := ctrl.chatService.MarkChatRoomAsRead(uint(roomID), userID); err != nil {
 		if err.Error() == "unauthorized access to chat room" {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Unauthorized access to chat room",
-			})
+			errors.Forbidden(c, "해당 채팅방에 접근할 권한이 없습니다")
 			return
 		}
 		log.Error("Failed to mark as read", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to mark as read",
-		})
+		errors.InternalError(c, "읽음 처리에 실패했습니다")
 		return
 	}
 
@@ -329,7 +296,7 @@ func (ctrl *ChatController) WebSocketHandler(c *gin.Context) {
 	// 미들웨어에서 이미 인증 완료
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -365,29 +332,23 @@ func (ctrl *ChatController) JoinRoom(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	roomID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid room ID",
-		})
+		errors.BadRequest(c, errors.ValidationInvalidID, "잘못된 채팅방 ID입니다")
 		return
 	}
 
 	if err := ctrl.chatService.JoinChatRoom(userID, uint(roomID)); err != nil {
 		if err.Error() == "unauthorized access to chat room" {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Unauthorized access to chat room",
-			})
+			errors.Forbidden(c, "해당 채팅방에 접근할 권한이 없습니다")
 			return
 		}
 		log.Error("Failed to join room", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to join room",
-		})
+		errors.InternalError(c, "채팅방 참여에 실패했습니다")
 		return
 	}
 
@@ -406,23 +367,19 @@ func (ctrl *ChatController) LeaveRoom(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	roomID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid room ID",
-		})
+		errors.BadRequest(c, errors.ValidationInvalidID, "잘못된 채팅방 ID입니다")
 		return
 	}
 
 	if err := ctrl.chatService.LeaveChatRoom(userID, uint(roomID)); err != nil {
 		log.Error("Failed to leave room", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to leave room",
-		})
+		errors.InternalError(c, "채팅방 나가기에 실패했습니다")
 		return
 	}
 
@@ -441,15 +398,13 @@ func (ctrl *ChatController) SearchMessages(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	keyword := c.Query("q")
 	if keyword == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Search keyword is required",
-		})
+		errors.BadRequest(c, errors.ValidationRequired, "검색어를 입력해주세요")
 		return
 	}
 
@@ -459,9 +414,7 @@ func (ctrl *ChatController) SearchMessages(c *gin.Context) {
 	messages, total, err := ctrl.chatService.SearchMessages(userID, keyword, page, pageSize)
 	if err != nil {
 		log.Error("Failed to search messages", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to search messages",
-		})
+		errors.InternalError(c, "메시지 검색에 실패했습니다")
 		return
 	}
 
@@ -490,45 +443,35 @@ func (ctrl *ChatController) UpdateMessage(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	messageID, err := strconv.ParseUint(c.Param("messageId"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid message ID",
-		})
+		errors.BadRequest(c, errors.ValidationInvalidID, "잘못된 메시지 ID입니다")
 		return
 	}
 
 	var req UpdateMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Error("Invalid request", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request: " + err.Error(),
-		})
+		errors.BadRequest(c, errors.ValidationInvalidInput, "입력값이 올바르지 않습니다")
 		return
 	}
 
 	message, err := ctrl.chatService.UpdateMessage(uint(messageID), userID, req.Content)
 	if err != nil {
 		if err.Error() == "unauthorized to update this message" {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Unauthorized to update this message",
-			})
+			errors.Forbidden(c, "해당 메시지를 수정할 권한이 없습니다")
 			return
 		}
 		if err.Error() == "cannot update deleted message" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Cannot update deleted message",
-			})
+			errors.BadRequest(c, errors.ChatUpdateDeleted, "삭제된 메시지는 수정할 수 없습니다")
 			return
 		}
 		log.Error("Failed to update message", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to update message",
-		})
+		errors.InternalError(c, "메시지 수정에 실패했습니다")
 		return
 	}
 
@@ -547,35 +490,27 @@ func (ctrl *ChatController) DeleteMessage(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		errors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	messageID, err := strconv.ParseUint(c.Param("messageId"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid message ID",
-		})
+		errors.BadRequest(c, errors.ValidationInvalidID, "잘못된 메시지 ID입니다")
 		return
 	}
 
 	if err := ctrl.chatService.DeleteMessage(uint(messageID), userID); err != nil {
 		if err.Error() == "unauthorized to delete this message" {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Unauthorized to delete this message",
-			})
+			errors.Forbidden(c, "해당 메시지를 삭제할 권한이 없습니다")
 			return
 		}
 		if err.Error() == "message already deleted" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Message already deleted",
-			})
+			errors.BadRequest(c, errors.ChatMessageDeleted, "이미 삭제된 메시지입니다")
 			return
 		}
 		log.Error("Failed to delete message", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to delete message",
-		})
+		errors.InternalError(c, "메시지 삭제에 실패했습니다")
 		return
 	}
 

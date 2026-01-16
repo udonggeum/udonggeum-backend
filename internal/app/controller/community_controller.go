@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
+	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
 )
 
@@ -41,26 +42,26 @@ func NewCommunityController(service service.CommunityService, aiService service.
 func (c *CommunityController) CreatePost(ctx *gin.Context) {
 	var req model.CreatePostRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidInput, "잘못된 요청 형식입니다")
 		return
 	}
 
 	// 인증된 사용자 정보 가져오기
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	userRole, exists := ctx.Get(middleware.UserRoleKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	post, err := c.service.CreatePost(&req, userID.(uint), userRole.(model.UserRole))
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "게시글 작성에 실패했습니다")
 		return
 	}
 
@@ -80,7 +81,7 @@ func (c *CommunityController) CreatePost(ctx *gin.Context) {
 func (c *CommunityController) GetPost(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 게시글 ID입니다")
 		return
 	}
 
@@ -93,7 +94,7 @@ func (c *CommunityController) GetPost(ctx *gin.Context) {
 
 	post, isLiked, err := c.service.GetPost(uint(id), userID)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "post not found"})
+		apperrors.NotFound(ctx, apperrors.PostNotFound, "게시글을 찾을 수 없습니다")
 		return
 	}
 
@@ -125,7 +126,7 @@ func (c *CommunityController) GetPost(ctx *gin.Context) {
 func (c *CommunityController) GetPosts(ctx *gin.Context) {
 	var query model.PostListQuery
 	if err := ctx.ShouldBindQuery(&query); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidInput, "잘못된 쿼리 파라미터입니다")
 		return
 	}
 
@@ -138,7 +139,7 @@ func (c *CommunityController) GetPosts(ctx *gin.Context) {
 
 	posts, total, err := c.service.GetPosts(&query, userID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apperrors.InternalError(ctx, "게시글 목록 조회에 실패했습니다")
 		return
 	}
 
@@ -176,35 +177,35 @@ func (c *CommunityController) GetPosts(ctx *gin.Context) {
 func (c *CommunityController) UpdatePost(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 게시글 ID입니다")
 		return
 	}
 
 	var req model.UpdatePostRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidInput, "잘못된 요청 형식입니다")
 		return
 	}
 
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	userRole, exists := ctx.Get(middleware.UserRoleKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	post, err := c.service.UpdatePost(uint(id), &req, userID.(uint), userRole.(model.UserRole))
 	if err != nil {
 		if err.Error() == "permission denied" {
-			ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			apperrors.Forbidden(ctx, "게시글 수정 권한이 없습니다")
 			return
 		}
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "게시글 수정에 실패했습니다")
 		return
 	}
 
@@ -226,28 +227,28 @@ func (c *CommunityController) UpdatePost(ctx *gin.Context) {
 func (c *CommunityController) DeletePost(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 게시글 ID입니다")
 		return
 	}
 
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	userRole, exists := ctx.Get(middleware.UserRoleKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	if err := c.service.DeletePost(uint(id), userID.(uint), userRole.(model.UserRole)); err != nil {
 		if err.Error() == "permission denied" {
-			ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			apperrors.Forbidden(ctx, "게시글 삭제 권한이 없습니다")
 			return
 		}
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.PostDeleteFailed, "게시글 삭제에 실패했습니다")
 		return
 	}
 
@@ -271,19 +272,19 @@ func (c *CommunityController) DeletePost(ctx *gin.Context) {
 func (c *CommunityController) CreateComment(ctx *gin.Context) {
 	var req model.CreateCommentRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidInput, "잘못된 요청 형식입니다")
 		return
 	}
 
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	comment, err := c.service.CreateComment(&req, userID.(uint))
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.CommentDeleteFailed, "댓글 작성에 실패했습니다")
 		return
 	}
 
@@ -307,7 +308,7 @@ func (c *CommunityController) CreateComment(ctx *gin.Context) {
 func (c *CommunityController) GetComments(ctx *gin.Context) {
 	var query model.CommentListQuery
 	if err := ctx.ShouldBindQuery(&query); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidInput, "잘못된 쿼리 파라미터입니다")
 		return
 	}
 
@@ -320,7 +321,7 @@ func (c *CommunityController) GetComments(ctx *gin.Context) {
 
 	comments, total, err := c.service.GetComments(&query, userID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apperrors.InternalError(ctx, "댓글 목록 조회에 실패했습니다")
 		return
 	}
 
@@ -358,35 +359,35 @@ func (c *CommunityController) GetComments(ctx *gin.Context) {
 func (c *CommunityController) UpdateComment(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid comment id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 댓글 ID입니다")
 		return
 	}
 
 	var req model.UpdateCommentRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidInput, "잘못된 요청 형식입니다")
 		return
 	}
 
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	userRole, exists := ctx.Get(middleware.UserRoleKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	comment, err := c.service.UpdateComment(uint(id), &req, userID.(uint), userRole.(model.UserRole))
 	if err != nil {
 		if err.Error() == "permission denied" {
-			ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			apperrors.Forbidden(ctx, "댓글 수정 권한이 없습니다")
 			return
 		}
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.CommentDeleteFailed, "댓글 수정에 실패했습니다")
 		return
 	}
 
@@ -408,28 +409,28 @@ func (c *CommunityController) UpdateComment(ctx *gin.Context) {
 func (c *CommunityController) DeleteComment(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid comment id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 댓글 ID입니다")
 		return
 	}
 
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	userRole, exists := ctx.Get(middleware.UserRoleKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	if err := c.service.DeleteComment(uint(id), userID.(uint), userRole.(model.UserRole)); err != nil {
 		if err.Error() == "permission denied" {
-			ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			apperrors.Forbidden(ctx, "댓글 삭제 권한이 없습니다")
 			return
 		}
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.CommentDeleteFailed, "댓글 삭제에 실패했습니다")
 		return
 	}
 
@@ -452,19 +453,19 @@ func (c *CommunityController) DeleteComment(ctx *gin.Context) {
 func (c *CommunityController) TogglePostLike(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 게시글 ID입니다")
 		return
 	}
 
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	isLiked, err := c.service.TogglePostLike(uint(id), userID.(uint))
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.PostNotFound, "게시글 좋아요 처리에 실패했습니다")
 		return
 	}
 
@@ -485,19 +486,19 @@ func (c *CommunityController) TogglePostLike(ctx *gin.Context) {
 func (c *CommunityController) ToggleCommentLike(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid comment id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 댓글 ID입니다")
 		return
 	}
 
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	isLiked, err := c.service.ToggleCommentLike(uint(id), userID.(uint))
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.CommentNotFound, "댓글 좋아요 처리에 실패했습니다")
 		return
 	}
 
@@ -523,28 +524,28 @@ func (c *CommunityController) ToggleCommentLike(ctx *gin.Context) {
 func (c *CommunityController) AcceptAnswer(ctx *gin.Context) {
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 게시글 ID입니다")
 		return
 	}
 
 	commentID, err := strconv.ParseUint(ctx.Param("comment_id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid comment id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 댓글 ID입니다")
 		return
 	}
 
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	if err := c.service.AcceptAnswer(uint(postID), uint(commentID), userID.(uint)); err != nil {
 		if err.Error() == "only post author can accept answers" {
-			ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			apperrors.Forbidden(ctx, "게시글 작성자만 답변을 채택할 수 있습니다")
 			return
 		}
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "답변 채택에 실패했습니다")
 		return
 	}
 
@@ -568,22 +569,22 @@ func (c *CommunityController) AcceptAnswer(ctx *gin.Context) {
 func (c *CommunityController) PinPost(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 게시글 ID입니다")
 		return
 	}
 
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	if err := c.service.PinPost(uint(id), userID.(uint)); err != nil {
 		if err.Error() == "only store owner can pin posts" {
-			ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			apperrors.Forbidden(ctx, "매장 소유자만 게시글을 고정할 수 있습니다")
 			return
 		}
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "게시글 고정에 실패했습니다")
 		return
 	}
 
@@ -605,22 +606,22 @@ func (c *CommunityController) PinPost(ctx *gin.Context) {
 func (c *CommunityController) UnpinPost(ctx *gin.Context) {
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 게시글 ID입니다")
 		return
 	}
 
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	if err := c.service.UnpinPost(uint(id), userID.(uint)); err != nil {
 		if err.Error() == "only store owner can unpin posts" {
-			ctx.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			apperrors.Forbidden(ctx, "매장 소유자만 게시글 고정을 해제할 수 있습니다")
 			return
 		}
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "게시글 고정 해제에 실패했습니다")
 		return
 	}
 
@@ -641,7 +642,7 @@ func (c *CommunityController) UnpinPost(ctx *gin.Context) {
 func (c *CommunityController) GetStoreGallery(ctx *gin.Context) {
 	storeID, err := strconv.ParseUint(ctx.Query("store_id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid store id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 매장 ID입니다")
 		return
 	}
 
@@ -656,7 +657,7 @@ func (c *CommunityController) GetStoreGallery(ctx *gin.Context) {
 
 	gallery, total, err := c.service.GetStoreGallery(uint(storeID), page, pageSize)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apperrors.InternalError(ctx, "매장 갤러리 조회에 실패했습니다")
 		return
 	}
 
@@ -683,21 +684,21 @@ func (c *CommunityController) GetStoreGallery(ctx *gin.Context) {
 func (c *CommunityController) GenerateContent(ctx *gin.Context) {
 	var req model.GenerateContentRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidInput, "잘못된 요청 형식입니다")
 		return
 	}
 
 	// 인증 확인 (로그인한 사용자만 사용 가능)
 	_, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	// AI 서비스 호출
 	content, err := c.aiService.GenerateContent(&req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apperrors.InternalError(ctx, "AI 컨텐츠 생성에 실패했습니다")
 		return
 	}
 
@@ -724,14 +725,14 @@ func (c *CommunityController) ReservePost(ctx *gin.Context) {
 	// 게시글 ID
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 게시글 ID입니다")
 		return
 	}
 
 	// 인증 확인
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
@@ -740,13 +741,13 @@ func (c *CommunityController) ReservePost(ctx *gin.Context) {
 		ReservedByUserID uint `json:"reserved_by_user_id" binding:"required"`
 	}
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidInput, "잘못된 요청 형식입니다")
 		return
 	}
 
 	// 예약 처리
 	if err := c.service.ReservePost(uint(postID), req.ReservedByUserID, userID.(uint)); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "게시글 예약에 실패했습니다")
 		return
 	}
 
@@ -770,20 +771,20 @@ func (c *CommunityController) CancelReservation(ctx *gin.Context) {
 	// 게시글 ID
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 게시글 ID입니다")
 		return
 	}
 
 	// 인증 확인
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	// 예약 취소 처리
 	if err := c.service.CancelReservation(uint(postID), userID.(uint)); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "예약 취소에 실패했습니다")
 		return
 	}
 
@@ -807,20 +808,20 @@ func (c *CommunityController) CompleteTransaction(ctx *gin.Context) {
 	// 게시글 ID
 	postID, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid post id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 게시글 ID입니다")
 		return
 	}
 
 	// 인증 확인
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	// 거래 완료 처리
 	if err := c.service.CompleteTransaction(uint(postID), userID.(uint)); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "거래 완료 처리에 실패했습니다")
 		return
 	}
 

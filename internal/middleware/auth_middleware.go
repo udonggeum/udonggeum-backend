@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
+	"github.com/ikkim/udonggeum-backend/internal/errors"
 	"github.com/ikkim/udonggeum-backend/pkg/util"
 )
 
@@ -42,9 +43,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 				log.Warn("Invalid authorization header format", map[string]interface{}{
 					"path": c.Request.URL.Path,
 				})
-				c.JSON(http.StatusUnauthorized, gin.H{
-					"error": "Invalid authorization header format",
-				})
+				errors.RespondWithError(c, http.StatusUnauthorized, errors.AuthTokenInvalid, "인증 형식이 올바르지 않습니다")
 				c.Abort()
 				return
 			}
@@ -56,9 +55,7 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 				log.Warn("Missing authorization header", map[string]interface{}{
 					"path": c.Request.URL.Path,
 				})
-				c.JSON(http.StatusUnauthorized, gin.H{
-					"error": "Authorization header is required",
-				})
+				errors.Unauthorized(c, "로그인이 필요합니다")
 				c.Abort()
 				return
 			}
@@ -76,17 +73,9 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 
 			// 토큰 만료 에러인 경우 명확히 표시
 			if err == util.ErrExpiredToken {
-				c.JSON(http.StatusUnauthorized, gin.H{
-					"error":         "Token expired",
-					"token_expired": true,
-					"message":       "Your session has expired. Please login again.",
-				})
+				errors.RespondWithError(c, http.StatusUnauthorized, errors.AuthTokenExpired, "로그인이 만료되었습니다")
 			} else {
-				c.JSON(http.StatusUnauthorized, gin.H{
-					"error":         "Invalid token",
-					"token_expired": false,
-					"message":       "Invalid authentication token. Please login again.",
-				})
+				errors.RespondWithError(c, http.StatusUnauthorized, errors.AuthTokenInvalid, "유효하지 않은 인증 토큰입니다")
 			}
 			c.Abort()
 			return
@@ -172,9 +161,7 @@ func (m *AuthMiddleware) RequireRole(roles ...string) gin.HandlerFunc {
 			log.Warn("Role information not found in context", map[string]interface{}{
 				"path": c.Request.URL.Path,
 			})
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Role information not found",
-			})
+			errors.RespondWithError(c, http.StatusForbidden, errors.AuthzRoleNotFound, "권한 정보를 찾을 수 없습니다")
 			c.Abort()
 			return
 		}
@@ -200,9 +187,7 @@ func (m *AuthMiddleware) RequireRole(roles ...string) gin.HandlerFunc {
 			"required_roles": roles,
 			"path":           c.Request.URL.Path,
 		})
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "Insufficient permissions",
-		})
+		errors.Forbidden(c, "접근 권한이 없습니다")
 		c.Abort()
 	}
 }

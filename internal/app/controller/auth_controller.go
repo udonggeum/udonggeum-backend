@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
+	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
 )
 
@@ -74,10 +75,7 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 		log.Warn("Invalid registration request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -93,17 +91,13 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 			log.Warn("Registration failed: email already exists", map[string]interface{}{
 				"email": req.Email,
 			})
-			c.JSON(http.StatusConflict, gin.H{
-				"error": "Email already exists",
-			})
+			apperrors.Conflict(c, apperrors.AuthEmailAlreadyExists, "이미 사용 중인 이메일입니다")
 			return
 		}
 		log.Error("Registration failed", err, map[string]interface{}{
 			"email": req.Email,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to register user",
-		})
+		apperrors.InternalError(c, "회원가입에 실패했습니다")
 		return
 	}
 
@@ -138,10 +132,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 		log.Warn("Invalid login request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -155,17 +146,13 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 			log.Warn("Login failed: invalid credentials", map[string]interface{}{
 				"email": req.Email,
 			})
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid email or password",
-			})
+			apperrors.Unauthorized(c, "이메일 또는 비밀번호가 올바르지 않습니다")
 			return
 		}
 		log.Error("Login failed", err, map[string]interface{}{
 			"email": req.Email,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to login",
-		})
+		apperrors.InternalError(c, "로그인에 실패했습니다")
 		return
 	}
 
@@ -198,9 +185,7 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("Unauthorized access to GetMe endpoint", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "User not authenticated",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -210,17 +195,13 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 			log.Warn("User not found", map[string]interface{}{
 				"user_id": userID,
 			})
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "User not found",
-			})
+			apperrors.NotFound(c, apperrors.ResourceNotFound, "사용자를 찾을 수 없습니다")
 			return
 		}
 		log.Error("Failed to get user information", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get user information",
-		})
+		apperrors.InternalError(c, "사용자 정보를 가져오는데 실패했습니다")
 		return
 	}
 
@@ -251,9 +232,7 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("Unauthorized access to UpdateMe endpoint", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "User not authenticated",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -263,10 +242,7 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 			"user_id": userID,
 			"error":   err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -283,9 +259,7 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 			log.Warn("User not found for profile update", map[string]interface{}{
 				"user_id": userID,
 			})
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "User not found",
-			})
+			apperrors.NotFound(c, apperrors.ResourceNotFound, "사용자를 찾을 수 없습니다")
 			return
 		}
 		if errors.Is(err, service.ErrNicknameAlreadyExists) {
@@ -293,17 +267,13 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 				"user_id":  userID,
 				"nickname": req.Nickname,
 			})
-			c.JSON(http.StatusConflict, gin.H{
-				"error": "Nickname already exists",
-			})
+			apperrors.Conflict(c, apperrors.AuthNicknameExists, "이미 사용 중인 닉네임입니다")
 			return
 		}
 		log.Error("Failed to update user profile", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to update user profile",
-		})
+		apperrors.InternalError(c, "프로필 업데이트에 실패했습니다")
 		return
 	}
 
@@ -337,10 +307,7 @@ func (ctrl *AuthController) ForgotPassword(c *gin.Context) {
 		log.Warn("Invalid forgot password request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -352,9 +319,7 @@ func (ctrl *AuthController) ForgotPassword(c *gin.Context) {
 		log.Error("Failed to process password reset request", err, map[string]interface{}{
 			"email": req.Email,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to process password reset request",
-		})
+		apperrors.InternalError(c, "비밀번호 재설정 요청에 실패했습니다")
 		return
 	}
 
@@ -378,10 +343,7 @@ func (ctrl *AuthController) ResetPassword(c *gin.Context) {
 		log.Warn("Invalid reset password request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -394,15 +356,11 @@ func (ctrl *AuthController) ResetPassword(c *gin.Context) {
 			log.Warn("Password reset failed: invalid or expired token", map[string]interface{}{
 				"error": err.Error(),
 			})
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": err.Error(),
-			})
+			apperrors.BadRequest(c, apperrors.AuthTokenInvalid, "유효하지 않거나 만료된 토큰입니다")
 			return
 		}
 		log.Error("Failed to reset password", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to reset password",
-		})
+		apperrors.InternalError(c, "비밀번호 재설정에 실패했습니다")
 		return
 	}
 
@@ -427,10 +385,7 @@ func (ctrl *AuthController) Logout(c *gin.Context) {
 		log.Warn("Invalid logout request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -464,10 +419,7 @@ func (ctrl *AuthController) RefreshToken(c *gin.Context) {
 		log.Warn("Invalid refresh token request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -480,39 +432,25 @@ func (ctrl *AuthController) RefreshToken(c *gin.Context) {
 			log.Warn("Token refresh failed: token revoked", map[string]interface{}{
 				"error": err.Error(),
 			})
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":         "refresh_token_revoked",
-				"message":       "This refresh token has been revoked. Please login again.",
-				"token_expired": true,
-			})
+			apperrors.RespondWithError(c, 401, apperrors.AuthTokenRevoked, "리프레시 토큰이 폐기되었습니다. 다시 로그인해주세요")
 			return
 		}
 		if errors.Is(err, service.ErrExpiredToken) {
 			log.Warn("Token refresh failed: token expired", map[string]interface{}{
 				"error": err.Error(),
 			})
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":         "refresh_token_expired",
-				"message":       "Your refresh token has expired (7 days). Please login again.",
-				"token_expired": true,
-			})
+			apperrors.RespondWithError(c, 401, apperrors.AuthTokenExpired, "리프레시 토큰이 만료되었습니다. 다시 로그인해주세요")
 			return
 		}
 		if errors.Is(err, service.ErrInvalidToken) {
 			log.Warn("Token refresh failed: invalid token", map[string]interface{}{
 				"error": err.Error(),
 			})
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":         "invalid_refresh_token",
-				"message":       "Invalid refresh token. Please login again.",
-				"token_expired": true,
-			})
+			apperrors.RespondWithError(c, 401, apperrors.AuthTokenInvalid, "유효하지 않은 리프레시 토큰입니다. 다시 로그인해주세요")
 			return
 		}
 		log.Error("Failed to refresh token", err, nil)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to refresh token",
-		})
+		apperrors.InternalError(c, "토큰 갱신에 실패했습니다")
 		return
 	}
 
@@ -534,10 +472,7 @@ func (ctrl *AuthController) CheckNickname(c *gin.Context) {
 		log.Warn("Invalid check nickname request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -550,9 +485,7 @@ func (ctrl *AuthController) CheckNickname(c *gin.Context) {
 		log.Error("Failed to check nickname availability", err, map[string]interface{}{
 			"nickname": req.Nickname,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to check nickname availability",
-		})
+		apperrors.InternalError(c, "닉네임 중복 확인에 실패했습니다")
 		return
 	}
 
@@ -576,10 +509,7 @@ func (ctrl *AuthController) CheckEmailAvailability(c *gin.Context) {
 		log.Warn("Invalid check email request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -592,9 +522,7 @@ func (ctrl *AuthController) CheckEmailAvailability(c *gin.Context) {
 		log.Error("Failed to check email availability", err, map[string]interface{}{
 			"email": req.Email,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to check email availability",
-		})
+		apperrors.InternalError(c, "이메일 중복 확인에 실패했습니다")
 		return
 	}
 
@@ -634,9 +562,7 @@ func (ctrl *AuthController) KakaoCallback(c *gin.Context) {
 	code := c.Query("code")
 	if code == "" {
 		log.Warn("Kakao callback without authorization code", nil)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Authorization code is required",
-		})
+		apperrors.BadRequest(c, apperrors.ValidationRequired, "인증 코드가 필요합니다")
 		return
 	}
 
@@ -651,24 +577,19 @@ func (ctrl *AuthController) KakaoCallback(c *gin.Context) {
 		})
 
 		// Provide more specific error messages
-		errorMsg := "Failed to login with Kakao"
-		statusCode := http.StatusInternalServerError
-
 		errStr := err.Error()
 		if errors.Is(err, service.ErrUserNotFound) ||
 		   strings.Contains(errStr, "email consent required") ||
 		   strings.Contains(errStr, "missing email") {
-			errorMsg = "Email consent is required for Kakao login"
-			statusCode = http.StatusBadRequest
+			apperrors.BadRequest(c, apperrors.AuthEmailNotVerified, "카카오 로그인 시 이메일 동의가 필요합니다")
+			return
 		} else if strings.Contains(errStr, "status 401") ||
 		          strings.Contains(errStr, "status 400") {
-			errorMsg = "Invalid Kakao authorization - please try again"
-			statusCode = http.StatusUnauthorized
+			apperrors.Unauthorized(c, "카카오 인증에 실패했습니다. 다시 시도해주세요")
+			return
 		}
 
-		c.JSON(statusCode, gin.H{
-			"error": errorMsg,
-		})
+		apperrors.InternalError(c, "카카오 로그인에 실패했습니다")
 		return
 	}
 
@@ -723,9 +644,7 @@ func (ctrl *AuthController) SendEmailVerification(c *gin.Context) {
 		log.Warn("Invalid request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -734,9 +653,7 @@ func (ctrl *AuthController) SendEmailVerification(c *gin.Context) {
 		log.Error("Failed to send email verification", err, map[string]interface{}{
 			"email": req.Email,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to send verification email",
-		})
+		apperrors.InternalError(c, "이메일 인증 코드 전송에 실패했습니다")
 		return
 	}
 
@@ -759,9 +676,7 @@ func (ctrl *AuthController) VerifyEmail(c *gin.Context) {
 		log.Warn("Invalid request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -771,18 +686,14 @@ func (ctrl *AuthController) VerifyEmail(c *gin.Context) {
 			log.Warn("Invalid verification code", map[string]interface{}{
 				"email": req.Email,
 			})
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Invalid or expired verification code",
-			})
+			apperrors.BadRequest(c, apperrors.AuthCodeInvalid, "유효하지 않거나 만료된 인증 코드입니다")
 			return
 		}
 
 		log.Error("Email verification failed", err, map[string]interface{}{
 			"email": req.Email,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to verify email",
-		})
+		apperrors.InternalError(c, "이메일 인증에 실패했습니다")
 		return
 	}
 
@@ -805,9 +716,7 @@ func (ctrl *AuthController) SendPhoneVerification(c *gin.Context) {
 		log.Warn("Invalid request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -815,9 +724,7 @@ func (ctrl *AuthController) SendPhoneVerification(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
 		log.Warn("User not authenticated", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -826,9 +733,7 @@ func (ctrl *AuthController) SendPhoneVerification(c *gin.Context) {
 		log.Error("Failed to send phone verification", err, map[string]interface{}{
 			"phone": req.Phone,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to send verification SMS",
-		})
+		apperrors.InternalError(c, "휴대폰 인증 코드 전송에 실패했습니다")
 		return
 	}
 
@@ -851,9 +756,7 @@ func (ctrl *AuthController) VerifyPhone(c *gin.Context) {
 		log.Warn("Invalid request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request data",
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -861,9 +764,7 @@ func (ctrl *AuthController) VerifyPhone(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
 		log.Warn("User not authenticated", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -873,18 +774,14 @@ func (ctrl *AuthController) VerifyPhone(c *gin.Context) {
 			log.Warn("Invalid verification code", map[string]interface{}{
 				"phone": req.Phone,
 			})
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Invalid or expired verification code",
-			})
+			apperrors.BadRequest(c, apperrors.AuthCodeInvalid, "유효하지 않거나 만료된 인증 코드입니다")
 			return
 		}
 
 		log.Error("Phone verification failed", err, map[string]interface{}{
 			"phone": req.Phone,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to verify phone",
-		})
+		apperrors.InternalError(c, "휴대폰 인증에 실패했습니다")
 		return
 	}
 

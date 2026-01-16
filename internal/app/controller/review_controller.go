@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
+	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
 )
 
 type ReviewController struct {
@@ -30,7 +31,7 @@ func (ctrl *ReviewController) CreateReview(c *gin.Context) {
 	// 사용자 ID 가져오기 (JWT 미들웨어에서 설정)
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "로그인이 필요합니다"})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -43,13 +44,13 @@ func (ctrl *ReviewController) CreateReview(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력값이 올바르지 않습니다")
 		return
 	}
 
 	review, err := ctrl.reviewService.CreateReview(userID.(uint), input)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(c, apperrors.InternalServerError, "리뷰 작성에 실패했습니다")
 		return
 	}
 
@@ -70,7 +71,7 @@ func (ctrl *ReviewController) CreateReview(c *gin.Context) {
 func (ctrl *ReviewController) GetStoreReviews(c *gin.Context) {
 	storeID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "잘못된 매장 ID입니다"})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 매장 ID입니다")
 		return
 	}
 
@@ -81,7 +82,7 @@ func (ctrl *ReviewController) GetStoreReviews(c *gin.Context) {
 
 	reviews, total, err := ctrl.reviewService.GetStoreReviews(uint(storeID), page, pageSize, sortBy, sortOrder)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.InternalError(c, "매장 리뷰 조회에 실패했습니다")
 		return
 	}
 
@@ -105,7 +106,7 @@ func (ctrl *ReviewController) GetUserReviews(c *gin.Context) {
 	// 사용자 ID 가져오기
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "로그인이 필요합니다"})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -114,7 +115,7 @@ func (ctrl *ReviewController) GetUserReviews(c *gin.Context) {
 
 	reviews, total, err := ctrl.reviewService.GetUserReviews(userID.(uint), page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.InternalError(c, "사용자 리뷰 조회에 실패했습니다")
 		return
 	}
 
@@ -139,13 +140,13 @@ func (ctrl *ReviewController) UpdateReview(c *gin.Context) {
 	// 사용자 ID 가져오기
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "로그인이 필요합니다"})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	reviewID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "잘못된 리뷰 ID입니다"})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 리뷰 ID입니다")
 		return
 	}
 
@@ -157,13 +158,13 @@ func (ctrl *ReviewController) UpdateReview(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력값이 올바르지 않습니다")
 		return
 	}
 
 	review, err := ctrl.reviewService.UpdateReview(uint(reviewID), userID.(uint), input)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.InternalError(c, "리뷰 수정에 실패했습니다")
 		return
 	}
 
@@ -180,7 +181,7 @@ func (ctrl *ReviewController) DeleteReview(c *gin.Context) {
 	// 사용자 ID 가져오기
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "로그인이 필요합니다"})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -190,12 +191,12 @@ func (ctrl *ReviewController) DeleteReview(c *gin.Context) {
 
 	reviewID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "잘못된 리뷰 ID입니다"})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 리뷰 ID입니다")
 		return
 	}
 
 	if err := ctrl.reviewService.DeleteReview(uint(reviewID), userID.(uint), isAdmin); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.InternalError(c, "리뷰 삭제에 실패했습니다")
 		return
 	}
 
@@ -212,19 +213,19 @@ func (ctrl *ReviewController) ToggleReviewLike(c *gin.Context) {
 	// 사용자 ID 가져오기
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "로그인이 필요합니다"})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
 	reviewID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "잘못된 리뷰 ID입니다"})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 리뷰 ID입니다")
 		return
 	}
 
 	isLiked, err := ctrl.reviewService.ToggleReviewLike(uint(reviewID), userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.InternalError(c, "좋아요 처리에 실패했습니다")
 		return
 	}
 
@@ -241,13 +242,13 @@ func (ctrl *ReviewController) ToggleReviewLike(c *gin.Context) {
 func (ctrl *ReviewController) GetStoreStatistics(c *gin.Context) {
 	storeID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "잘못된 매장 ID입니다"})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 매장 ID입니다")
 		return
 	}
 
 	stats, err := ctrl.reviewService.GetStoreStatistics(uint(storeID))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.InternalError(c, "매장 통계 조회에 실패했습니다")
 		return
 	}
 
@@ -266,7 +267,7 @@ func (ctrl *ReviewController) GetStoreStatistics(c *gin.Context) {
 func (ctrl *ReviewController) GetStoreGallery(c *gin.Context) {
 	storeID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "잘못된 매장 ID입니다"})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 매장 ID입니다")
 		return
 	}
 
@@ -275,7 +276,7 @@ func (ctrl *ReviewController) GetStoreGallery(c *gin.Context) {
 
 	gallery, total, err := ctrl.reviewService.GetStoreGallery(uint(storeID), page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.InternalError(c, "매장 갤러리 조회에 실패했습니다")
 		return
 	}
 

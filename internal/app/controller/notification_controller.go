@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
@@ -39,7 +40,7 @@ func NewNotificationController(service service.NotificationService) *Notificatio
 func (c *NotificationController) GetNotifications(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
@@ -72,7 +73,7 @@ func (c *NotificationController) GetNotifications(ctx *gin.Context) {
 		pageSize,
 	)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apperrors.InternalError(ctx, "알림 목록을 조회하는 중 오류가 발생했습니다")
 		return
 	}
 
@@ -98,13 +99,13 @@ func (c *NotificationController) GetNotifications(ctx *gin.Context) {
 func (c *NotificationController) GetUnreadCount(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	count, err := c.service.GetUnreadCount(userID.(uint))
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apperrors.InternalError(ctx, "안읽은 알림 개수를 조회하는 중 오류가 발생했습니다")
 		return
 	}
 
@@ -129,23 +130,23 @@ func (c *NotificationController) GetUnreadCount(ctx *gin.Context) {
 func (c *NotificationController) MarkAsRead(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid notification id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 알림 ID입니다")
 		return
 	}
 
 	notification, err := c.service.MarkAsRead(uint(id), userID.(uint))
 	if err != nil {
 		if err.Error() == "unauthorized" {
-			ctx.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			apperrors.Forbidden(ctx, "해당 알림에 대한 권한이 없습니다")
 			return
 		}
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "notification not found"})
+		apperrors.NotFound(ctx, apperrors.NotificationNotFound, "알림을 찾을 수 없습니다")
 		return
 	}
 
@@ -167,17 +168,17 @@ func (c *NotificationController) MarkAsRead(ctx *gin.Context) {
 func (c *NotificationController) MarkAllAsRead(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	if err := c.service.MarkAllAsRead(userID.(uint)); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apperrors.InternalError(ctx, "알림을 읽음 처리하는 중 오류가 발생했습니다")
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "all notifications marked as read",
+		"message": "모든 알림을 읽음 처리했습니다",
 	})
 }
 
@@ -197,27 +198,27 @@ func (c *NotificationController) MarkAllAsRead(ctx *gin.Context) {
 func (c *NotificationController) DeleteNotification(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid notification id"})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidID, "잘못된 알림 ID입니다")
 		return
 	}
 
 	if err := c.service.DeleteNotification(uint(id), userID.(uint)); err != nil {
 		if err.Error() == "unauthorized" {
-			ctx.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			apperrors.Forbidden(ctx, "해당 알림에 대한 권한이 없습니다")
 			return
 		}
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "notification not found"})
+		apperrors.NotFound(ctx, apperrors.NotificationNotFound, "알림을 찾을 수 없습니다")
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "notification deleted",
+		"message": "알림이 삭제되었습니다",
 	})
 }
 
@@ -234,13 +235,13 @@ func (c *NotificationController) DeleteNotification(ctx *gin.Context) {
 func (c *NotificationController) GetNotificationSettings(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	settings, err := c.service.GetNotificationSettings(userID.(uint))
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apperrors.InternalError(ctx, "알림 설정을 조회하는 중 오류가 발생했습니다")
 		return
 	}
 
@@ -264,19 +265,19 @@ func (c *NotificationController) GetNotificationSettings(ctx *gin.Context) {
 func (c *NotificationController) UpdateNotificationSettings(ctx *gin.Context) {
 	userID, exists := ctx.Get(middleware.UserIDKey)
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
 		return
 	}
 
 	var req service.UpdateNotificationSettingsRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apperrors.BadRequest(ctx, apperrors.ValidationInvalidInput, "입력값이 올바르지 않습니다")
 		return
 	}
 
 	settings, err := c.service.UpdateNotificationSettings(userID.(uint), &req)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apperrors.InternalError(ctx, "알림 설정을 수정하는 중 오류가 발생했습니다")
 		return
 	}
 

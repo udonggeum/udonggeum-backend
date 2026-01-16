@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
+	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
 	"github.com/ikkim/udonggeum-backend/pkg/util"
 )
@@ -200,9 +201,7 @@ func (ctrl *StoreController) GetStoreByID(c *gin.Context) {
 			"store_id": idStr,
 			"error":    err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid store ID",
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 매장 ID입니다")
 		return
 	}
 
@@ -214,17 +213,13 @@ func (ctrl *StoreController) GetStoreByID(c *gin.Context) {
 			log.Warn("Store not found", map[string]interface{}{
 				"store_id": id,
 			})
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "Store not found",
-			})
+			apperrors.NotFound(c, apperrors.StoreNotFound, "매장을 찾을 수 없습니다")
 			return
 		}
 		log.Error("Failed to fetch store", err, map[string]interface{}{
 			"store_id": id,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch store",
-		})
+		apperrors.InternalError(c, "매장 조회에 실패했습니다")
 		return
 	}
 
@@ -269,9 +264,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("User ID not found in context for store creation", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -281,9 +274,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		log.Error("Failed to get user", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to verify user",
-		})
+		apperrors.InternalError(c, "사용자 정보 확인 중 오류가 발생했습니다")
 		return
 	}
 
@@ -291,9 +282,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		log.Warn("Phone not verified for store creation", map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "휴대폰 인증이 필요합니다. 마이페이지에서 휴대폰 인증을 완료해주세요.",
-		})
+		apperrors.RespondWithError(c, http.StatusForbidden, apperrors.AuthPhoneNotVerified, "휴대폰 인증이 필요합니다. 마이페이지에서 휴대폰 인증을 완료해주세요")
 		return
 	}
 
@@ -304,9 +293,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 			"user_id":         userID,
 			"existing_stores": len(existingStores),
 		})
-		c.JSON(http.StatusConflict, gin.H{
-			"error": "이미 매장을 소유하고 있습니다. 한 계정당 하나의 매장만 등록 가능합니다.",
-		})
+		apperrors.Conflict(c, apperrors.StoreAlreadyOwned, "이미 매장을 소유하고 있습니다. 한 계정당 하나의 매장만 등록할 수 있습니다")
 		return
 	}
 
@@ -315,10 +302,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		log.Warn("Invalid store creation request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -328,9 +312,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 		log.Error("Failed to check business number duplication", err, map[string]interface{}{
 			"business_number": req.BusinessNumber,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "사업자번호 확인 중 오류가 발생했습니다",
-		})
+		apperrors.InternalError(c, "사업자번호 확인 중 오류가 발생했습니다")
 		return
 	}
 	if existingStore != nil {
@@ -339,9 +321,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 			"existing_store":  existingStore.ID,
 			"user_id":         userID,
 		})
-		c.JSON(http.StatusConflict, gin.H{
-			"error": "이미 해당 사업자등록번호로 등록된 매장이 있습니다",
-		})
+		apperrors.Conflict(c, apperrors.StoreBusinessNumberExists, "이미 등록된 사업자등록번호입니다")
 		return
 	}
 
@@ -361,10 +341,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 			"business_number": req.BusinessNumber,
 			"user_id":         userID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "사업자 인증 중 오류가 발생했습니다",
-			"details": err.Error(),
-		})
+		apperrors.InternalError(c, "사업자 인증 중 오류가 발생했습니다")
 		return
 	}
 
@@ -374,10 +351,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 			"user_id":         userID,
 			"reason":          verificationResult.Message,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "사업자 인증에 실패했습니다",
-			"message": verificationResult.Message,
-		})
+		apperrors.RespondWithError(c, http.StatusBadRequest, apperrors.StoreVerificationFailed, verificationResult.Message)
 		return
 	}
 
@@ -427,9 +401,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 			"user_id": userID,
 			"name":    req.Name,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to create store",
-		})
+		apperrors.InternalError(c, "매장 등록에 실패했습니다")
 		return
 	}
 
@@ -449,9 +421,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 			})
 		}
 
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "매장 등록 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
-		})
+		apperrors.InternalError(c, "매장 등록 중 오류가 발생했습니다")
 		return
 	}
 
@@ -473,9 +443,7 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("User ID not found in context for store update", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -486,9 +454,7 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 			"store_id": idStr,
 			"error":    err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid store ID",
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 매장 ID입니다")
 		return
 	}
 
@@ -498,10 +464,7 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 			"store_id": storeID,
 			"error":    err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "잘못된 요청 데이터입니다")
 		return
 	}
 
@@ -525,26 +488,20 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 			log.Warn("Cannot update store: not found", map[string]interface{}{
 				"store_id": storeID,
 			})
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "Store not found",
-			})
+			apperrors.NotFound(c, apperrors.StoreNotFound, "매장을 찾을 수 없습니다")
 			return
 		case service.ErrStoreAccessDenied:
 			log.Warn("Store update forbidden", map[string]interface{}{
 				"store_id": storeID,
 				"user_id":  userID,
 			})
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Insufficient permissions",
-			})
+			apperrors.Forbidden(c, "매장 수정 권한이 없습니다")
 			return
 		default:
 			log.Error("Failed to update store", err, map[string]interface{}{
 				"store_id": storeID,
 			})
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to update store",
-			})
+			apperrors.InternalError(c, "매장 수정에 실패했습니다")
 			return
 		}
 	}
@@ -566,9 +523,7 @@ func (ctrl *StoreController) DeleteStore(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("User ID not found in context for store deletion", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -579,9 +534,7 @@ func (ctrl *StoreController) DeleteStore(c *gin.Context) {
 			"store_id": idStr,
 			"error":    err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid store ID",
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 매장 ID입니다")
 		return
 	}
 
@@ -591,26 +544,20 @@ func (ctrl *StoreController) DeleteStore(c *gin.Context) {
 			log.Warn("Cannot delete store: not found", map[string]interface{}{
 				"store_id": storeID,
 			})
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "Store not found",
-			})
+			apperrors.NotFound(c, apperrors.StoreNotFound, "매장을 찾을 수 없습니다")
 			return
 		case service.ErrStoreAccessDenied:
 			log.Warn("Store deletion forbidden", map[string]interface{}{
 				"store_id": storeID,
 				"user_id":  userID,
 			})
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Insufficient permissions",
-			})
+			apperrors.Forbidden(c, "매장 삭제 권한이 없습니다")
 			return
 		default:
 			log.Error("Failed to delete store", err, map[string]interface{}{
 				"store_id": storeID,
 			})
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to delete store",
-			})
+			apperrors.InternalError(c, "매장 삭제에 실패했습니다")
 			return
 		}
 	}
@@ -715,9 +662,7 @@ func (ctrl *StoreController) GetUserLikedStores(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("User ID not found in context", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -726,9 +671,7 @@ func (ctrl *StoreController) GetUserLikedStores(c *gin.Context) {
 		log.Error("Failed to get user liked stores", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get liked stores",
-		})
+		apperrors.InternalError(c, "찜한 매장 조회에 실패했습니다")
 		return
 	}
 
@@ -750,9 +693,7 @@ func (ctrl *StoreController) GetMyStore(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("User ID not found in context for my store", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -761,9 +702,7 @@ func (ctrl *StoreController) GetMyStore(c *gin.Context) {
 		log.Error("Failed to get my store", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get my store",
-		})
+		apperrors.InternalError(c, "내 매장 조회에 실패했습니다")
 		return
 	}
 
@@ -772,9 +711,7 @@ func (ctrl *StoreController) GetMyStore(c *gin.Context) {
 		log.Warn("No store found for admin user", map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Store not found",
-		})
+		apperrors.NotFound(c, apperrors.StoreNotFound, "매장을 찾을 수 없습니다")
 		return
 	}
 
@@ -795,9 +732,7 @@ func (ctrl *StoreController) UpdateMyStore(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("User ID not found in context for my store update", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -807,9 +742,7 @@ func (ctrl *StoreController) UpdateMyStore(c *gin.Context) {
 		log.Error("Failed to get my store for update", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get my store",
-		})
+		apperrors.InternalError(c, "내 매장 조회에 실패했습니다")
 		return
 	}
 
@@ -817,9 +750,7 @@ func (ctrl *StoreController) UpdateMyStore(c *gin.Context) {
 		log.Warn("No store found for admin user update", map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Store not found",
-		})
+		apperrors.NotFound(c, apperrors.StoreNotFound, "매장을 찾을 수 없습니다")
 		return
 	}
 
@@ -831,10 +762,7 @@ func (ctrl *StoreController) UpdateMyStore(c *gin.Context) {
 			"store_id": storeID,
 			"error":    err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "잘못된 요청 데이터입니다")
 		return
 	}
 
@@ -858,26 +786,20 @@ func (ctrl *StoreController) UpdateMyStore(c *gin.Context) {
 			log.Warn("Cannot update my store: not found", map[string]interface{}{
 				"store_id": storeID,
 			})
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "Store not found",
-			})
+			apperrors.NotFound(c, apperrors.StoreNotFound, "매장을 찾을 수 없습니다")
 			return
 		case service.ErrStoreAccessDenied:
 			log.Warn("My store update forbidden", map[string]interface{}{
 				"store_id": storeID,
 				"user_id":  userID,
 			})
-			c.JSON(http.StatusForbidden, gin.H{
-				"error": "Insufficient permissions",
-			})
+			apperrors.Forbidden(c, "매장 수정 권한이 없습니다")
 			return
 		default:
 			log.Error("Failed to update my store", err, map[string]interface{}{
 				"store_id": storeID,
 			})
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Failed to update store",
-			})
+			apperrors.InternalError(c, "내 매장 수정에 실패했습니다")
 			return
 		}
 	}
@@ -907,9 +829,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("User ID not found in context for store claim", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -919,9 +839,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		log.Error("Failed to get user", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to verify user",
-		})
+		apperrors.InternalError(c, "사용자 정보 확인 중 오류가 발생했습니다")
 		return
 	}
 
@@ -929,9 +847,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		log.Warn("Phone not verified for store claim", map[string]interface{}{
 			"user_id": userID,
 		})
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "휴대폰 인증이 필요합니다. 마이페이지에서 휴대폰 인증을 완료해주세요.",
-		})
+		apperrors.RespondWithError(c, http.StatusForbidden, apperrors.AuthPhoneNotVerified, "휴대폰 인증이 필요합니다. 마이페이지에서 휴대폰 인증을 완료해주세요")
 		return
 	}
 
@@ -942,9 +858,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 			"user_id":         userID,
 			"existing_stores": len(existingStores),
 		})
-		c.JSON(http.StatusConflict, gin.H{
-			"error": "이미 매장을 소유하고 있습니다. 한 계정당 하나의 매장만 소유 가능합니다.",
-		})
+		apperrors.Conflict(c, apperrors.StoreAlreadyOwned, "이미 매장을 소유하고 있습니다. 한 계정당 하나의 매장만 등록할 수 있습니다")
 		return
 	}
 
@@ -954,11 +868,8 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 	if err != nil {
 		log.Warn("Invalid store ID format for claim", map[string]interface{}{
 			"store_id": idStr,
-			"error":    err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid store ID",
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 매장 ID입니다")
 		return
 	}
 
@@ -967,10 +878,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		log.Warn("Invalid store claim request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "입력 정보가 올바르지 않습니다")
 		return
 	}
 
@@ -980,9 +888,28 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		log.Warn("Store not found for claim", map[string]interface{}{
 			"store_id": storeID,
 		})
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "매장을 찾을 수 없습니다",
+		apperrors.NotFound(c, apperrors.StoreNotFound, "매장을 찾을 수 없습니다")
+		return
+	}
+
+	// 이미 사업자 등록이 완료된 매장인지 확인
+	if store.BusinessRegistration != nil {
+		// 내가 이미 등록한 경우
+		if store.UserID != nil && *store.UserID == userID {
+			log.Warn("User already claimed this store", map[string]interface{}{
+				"store_id": storeID,
+				"user_id":  userID,
+			})
+			apperrors.Conflict(c, apperrors.StoreAlreadyOwned, "이미 소유권 등록을 완료한 매장입니다")
+			return
+		}
+		// 다른 사람이 등록한 경우
+		log.Warn("Store already managed by another user", map[string]interface{}{
+			"store_id": storeID,
+			"owner_id": store.UserID,
+			"user_id":  userID,
 		})
+		apperrors.Conflict(c, apperrors.StoreAlreadyManaged, "이미 다른 사용자가 등록한 매장입니다")
 		return
 	}
 
@@ -991,9 +918,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 			"store_id": storeID,
 			"user_id":  store.UserID,
 		})
-		c.JSON(http.StatusConflict, gin.H{
-			"error": "이미 관리 중인 매장입니다",
-		})
+		apperrors.Conflict(c, apperrors.StoreAlreadyManaged, "이미 다른 사용자가 등록한 매장입니다")
 		return
 	}
 
@@ -1003,9 +928,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		log.Error("Failed to check business number duplication", err, map[string]interface{}{
 			"business_number": req.BusinessNumber,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "사업자번호 확인 중 오류가 발생했습니다",
-		})
+		apperrors.InternalError(c, "사업자번호 확인 중 오류가 발생했습니다")
 		return
 	}
 	if existingStore != nil && existingStore.ID != uint(storeID) {
@@ -1016,9 +939,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 			"claiming_store":  storeID,
 			"user_id":         userID,
 		})
-		c.JSON(http.StatusConflict, gin.H{
-			"error": "이미 해당 사업자등록번호로 등록된 다른 매장이 있습니다",
-		})
+		apperrors.Conflict(c, apperrors.StoreBusinessNumberExists, "이미 등록된 사업자등록번호입니다")
 		return
 	}
 
@@ -1039,10 +960,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 			"business_number": req.BusinessNumber,
 			"user_id":         userID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "사업자 인증 중 오류가 발생했습니다",
-			"details": err.Error(),
-		})
+		apperrors.InternalError(c, "사업자 인증 중 오류가 발생했습니다")
 		return
 	}
 
@@ -1052,10 +970,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 			"user_id":         userID,
 			"reason":          verificationResult.Message,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "사업자 인증에 실패했습니다",
-			"message": verificationResult.Message,
-		})
+		apperrors.RespondWithError(c, http.StatusBadRequest, apperrors.StoreVerificationFailed, verificationResult.Message)
 		return
 	}
 
@@ -1099,9 +1014,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 			"store_id": storeID,
 			"user_id":  userID,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "매장 소유권 등록에 실패했습니다",
-		})
+		apperrors.InternalError(c, "매장 소유권 등록에 실패했습니다")
 		return
 	}
 
@@ -1127,9 +1040,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 			})
 		}
 
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "매장 소유권 등록 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
-		})
+		apperrors.InternalError(c, "매장 소유권 등록 중 오류가 발생했습니다")
 		return
 	}
 
@@ -1159,9 +1070,7 @@ func (ctrl *StoreController) SubmitVerification(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("User ID not found in context for verification submission", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -1170,10 +1079,7 @@ func (ctrl *StoreController) SubmitVerification(c *gin.Context) {
 		log.Warn("Invalid verification submission request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "잘못된 요청 데이터입니다")
 		return
 	}
 
@@ -1308,9 +1214,7 @@ func (ctrl *StoreController) GetMyVerificationStatus(c *gin.Context) {
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("User ID not found in context for verification status", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -1380,9 +1284,7 @@ func (ctrl *StoreController) ReviewVerification(c *gin.Context) {
 	adminID, exists := middleware.GetUserID(c)
 	if !exists {
 		log.Warn("Admin ID not found in context for verification review", nil)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
-		})
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
 		return
 	}
 
@@ -1394,9 +1296,7 @@ func (ctrl *StoreController) ReviewVerification(c *gin.Context) {
 			"verification_id": idStr,
 			"error":           err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid verification ID",
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 인증 ID입니다")
 		return
 	}
 
@@ -1405,10 +1305,7 @@ func (ctrl *StoreController) ReviewVerification(c *gin.Context) {
 		log.Warn("Invalid verification review request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "잘못된 요청 데이터입니다")
 		return
 	}
 

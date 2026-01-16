@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	ErrStoreNotFound     = errors.New("store not found")
-	ErrStoreAccessDenied = errors.New("store access denied")
+	ErrStoreNotFound     = errors.New("매장을 찾을 수 없습니다")
+	ErrStoreAccessDenied = errors.New("매장 접근 권한이 없습니다")
 )
 
 type StoreListOptions struct {
@@ -60,6 +60,7 @@ type StoreService interface {
 }
 
 type storeService struct {
+	db        *gorm.DB
 	storeRepo repository.StoreRepository
 	userRepo  repository.UserRepository
 }
@@ -79,8 +80,9 @@ type StoreMutation struct {
 	TagIDs      []uint // 태그 ID 배열
 }
 
-func NewStoreService(storeRepo repository.StoreRepository, userRepo repository.UserRepository) StoreService {
+func NewStoreService(db *gorm.DB, storeRepo repository.StoreRepository, userRepo repository.UserRepository) StoreService {
 	return &storeService{
+		db:        db,
 		storeRepo: storeRepo,
 		userRepo:  userRepo,
 	}
@@ -587,8 +589,29 @@ func (s *storeService) UpdateStoreOwnership(store *model.Store) (*model.Store, e
 		"user_id":  store.UserID,
 	})
 
+	// 트랜잭션으로 처리하여 일부만 성공하는 문제 방지
+	tx := s.db.Begin()
+	if tx.Error != nil {
+		logger.Error("Failed to begin transaction", tx.Error, map[string]interface{}{
+			"store_id": store.ID,
+		})
+		return nil, tx.Error
+	}
+
+	// 트랜잭션 완료 시 커밋 또는 롤백
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			logger.Error("Transaction rolled back due to panic", nil, map[string]interface{}{
+				"store_id": store.ID,
+				"panic":    r,
+			})
+		}
+	}()
+
 	// Update store with new ownership information
-	if err := s.storeRepo.Update(store); err != nil {
+	if err := tx.Save(store).Error; err != nil {
+		tx.Rollback()
 		logger.Error("Failed to update store ownership", err, map[string]interface{}{
 			"store_id": store.ID,
 		})
@@ -597,12 +620,22 @@ func (s *storeService) UpdateStoreOwnership(store *model.Store) (*model.Store, e
 
 	// Create business registration if provided
 	if store.BusinessRegistration != nil {
-		if err := s.storeRepo.CreateBusinessRegistration(store.BusinessRegistration); err != nil {
+		if err := tx.Create(store.BusinessRegistration).Error; err != nil {
+			tx.Rollback()
 			logger.Error("Failed to create business registration for claimed store", err, map[string]interface{}{
 				"store_id": store.ID,
 			})
 			return nil, err
 		}
+	}
+
+	// 트랜잭션 커밋
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		logger.Error("Failed to commit transaction", err, map[string]interface{}{
+			"store_id": store.ID,
+		})
+		return nil, err
 	}
 
 	logger.Info("Store ownership updated successfully", map[string]interface{}{

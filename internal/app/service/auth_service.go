@@ -20,16 +20,16 @@ import (
 )
 
 var (
-	ErrEmailAlreadyExists       = errors.New("email already exists")
-	ErrInvalidCredentials       = errors.New("invalid email or password")
-	ErrUserNotFound             = errors.New("user not found")
-	ErrInvalidToken             = errors.New("invalid token")
-	ErrExpiredToken             = errors.New("token has expired")
-	ErrTokenRevoked             = errors.New("token has been revoked")
-	ErrNicknameAlreadyExists    = errors.New("nickname already exists")
-	ErrInvalidVerificationCode  = errors.New("invalid or expired verification code")
-	ErrEmailAlreadyVerified     = errors.New("email already verified")
-	ErrPhoneAlreadyVerified     = errors.New("phone already verified")
+	ErrEmailAlreadyExists       = errors.New("이미 사용 중인 이메일입니다")
+	ErrInvalidCredentials       = errors.New("이메일 또는 비밀번호가 올바르지 않습니다")
+	ErrUserNotFound             = errors.New("사용자를 찾을 수 없습니다")
+	ErrInvalidToken             = errors.New("유효하지 않은 토큰입니다")
+	ErrExpiredToken             = errors.New("토큰이 만료되었습니다")
+	ErrTokenRevoked             = errors.New("토큰이 폐기되었습니다")
+	ErrNicknameAlreadyExists    = errors.New("이미 사용 중인 닉네임입니다")
+	ErrInvalidVerificationCode  = errors.New("유효하지 않거나 만료된 인증 코드입니다")
+	ErrEmailAlreadyVerified     = errors.New("이미 인증된 이메일입니다")
+	ErrPhoneAlreadyVerified     = errors.New("이미 인증된 휴대폰입니다")
 )
 
 type AuthService interface {
@@ -305,7 +305,7 @@ func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address,
 			logger.Warn("Admin users cannot update nickname directly", map[string]interface{}{
 				"user_id": userID,
 			})
-			return nil, errors.New("admin users cannot update nickname directly - it is automatically synchronized with store name")
+			return nil, errors.New("관리자는 닉네임을 직접 수정할 수 없습니다 - 매장 이름과 자동으로 동기화됩니다")
 		}
 
 		// Check if nickname already exists
@@ -583,7 +583,7 @@ func (s *authService) generateUniqueNickname() (string, error) {
 		})
 	}
 
-	return "", errors.New("failed to generate unique nickname after maximum retries")
+	return "", errors.New("고유한 닉네임을 생성하는데 실패했습니다. 다시 시도해주세요")
 }
 
 // normalizePhoneNumber normalizes phone number from Kakao format to storage format
@@ -896,7 +896,7 @@ func (s *authService) getKakaoUserInfo(accessToken string) (*kakaoUserInfo, erro
 		logger.Error("Kakao user info missing email", nil, map[string]interface{}{
 			"response_body": string(body),
 		})
-		return nil, fmt.Errorf("kakao user did not provide email - email consent required")
+		return nil, fmt.Errorf("카카오 사용자가 이메일을 제공하지 않았습니다 - 이메일 동의가 필요합니다")
 	}
 
 	logger.Debug("Kakao user info obtained successfully", map[string]interface{}{

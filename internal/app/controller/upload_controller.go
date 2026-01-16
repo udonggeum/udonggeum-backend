@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
 	"github.com/ikkim/udonggeum-backend/internal/storage"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 )
@@ -32,10 +33,7 @@ func (ctrl *UploadController) GeneratePresignedURL(c *gin.Context) {
 		logger.Warn("Invalid presigned URL request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "잘못된 요청입니다")
 		return
 	}
 
@@ -51,9 +49,7 @@ func (ctrl *UploadController) GeneratePresignedURL(c *gin.Context) {
 		logger.Warn("Invalid content type", map[string]interface{}{
 			"content_type": req.ContentType,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Only image files are allowed (JPEG, PNG, GIF, WEBP)",
-		})
+		apperrors.BadRequest(c, apperrors.UploadInvalidFileType, "이미지 파일만 업로드 가능합니다")
 		return
 	}
 
@@ -71,9 +67,7 @@ func (ctrl *UploadController) GeneratePresignedURL(c *gin.Context) {
 			"content_type": req.ContentType,
 			"folder":       folder,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to generate presigned URL",
-		})
+		apperrors.InternalError(c, "업로드 URL 생성에 실패했습니다")
 		return
 	}
 
@@ -99,10 +93,7 @@ func (ctrl *UploadController) GenerateChatFilePresignedURL(c *gin.Context) {
 		logger.Warn("Invalid presigned URL request", map[string]interface{}{
 			"error": err.Error(),
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request data",
-			"details": err.Error(),
-		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "잘못된 요청입니다")
 		return
 	}
 
@@ -130,9 +121,7 @@ func (ctrl *UploadController) GenerateChatFilePresignedURL(c *gin.Context) {
 		logger.Warn("Invalid content type for chat file", map[string]interface{}{
 			"content_type": req.ContentType,
 		})
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "File type not allowed. Allowed types: images, PDF, Word, Excel, ZIP, RAR, TXT",
-		})
+		apperrors.BadRequest(c, apperrors.UploadInvalidFileType, "허용되지 않는 파일 형식입니다")
 		return
 	}
 
@@ -158,9 +147,7 @@ func (ctrl *UploadController) GenerateChatFilePresignedURL(c *gin.Context) {
 			"content_type": req.ContentType,
 			"folder":       folder,
 		})
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to generate presigned URL",
-		})
+		apperrors.InternalError(c, "업로드 URL 생성에 실패했습니다")
 		return
 	}
 

@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	ErrGoldPriceNotFound     = errors.New("gold price not found")
-	ErrExternalAPIFailed     = errors.New("failed to fetch gold price from external API")
-	ErrInvalidGoldPriceType  = errors.New("invalid gold price type")
+	ErrGoldPriceNotFound     = errors.New("금 시세를 찾을 수 없습니다")
+	ErrExternalAPIFailed     = errors.New("외부 API에서 금 시세를 가져오는데 실패했습니다")
+	ErrInvalidGoldPriceType  = errors.New("잘못된 금 종류입니다")
 )
 
 // ExternalGoldPriceAPI 외부 금 시세 API 인터페이스
@@ -120,7 +120,7 @@ func (s *goldPriceService) GetPriceByType(priceType model.GoldPriceType) (*model
 // UpdatePricesFromExternalAPI 외부 API에서 금 시세 업데이트
 func (s *goldPriceService) UpdatePricesFromExternalAPI() error {
 	if s.externalAPI == nil {
-		return errors.New("external API not configured")
+		return errors.New("외부 API가 설정되지 않았습니다")
 	}
 
 	prices, err := s.externalAPI.FetchGoldPrices()
@@ -251,7 +251,7 @@ type GoldAPIResponse struct {
 // FetchGoldPrices 외부 API에서 금 시세 조회 (GOLDAPI)
 func (api *DefaultGoldPriceAPI) FetchGoldPrices() (map[model.GoldPriceType]GoldPriceData, error) {
 	if api.apiURL == "" {
-		return nil, errors.New("gold price API URL is not configured")
+		return nil, errors.New("금 시세 API URL이 설정되지 않았습니다")
 	}
 
 	client := &http.Client{
@@ -321,7 +321,7 @@ func (api *DefaultGoldPriceAPI) FetchGoldPrices() (map[model.GoldPriceType]GoldP
 	}
 
 	if len(prices) == 0 {
-		return nil, errors.New("no valid gold price data received from API")
+		return nil, errors.New("API로부터 유효한 금 시세 데이터를 받지 못했습니다")
 	}
 
 	logger.Info("Successfully fetched gold prices from GOLDAPI", map[string]interface{}{
