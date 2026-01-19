@@ -67,8 +67,6 @@ type UpdateStoreRequest struct {
 func (ctrl *StoreController) ListStores(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)
 
-	includeProducts := strings.EqualFold(c.DefaultQuery("include_products", "false"), "true")
-
 	// Parse user location if provided
 	var userLat, userLng *float64
 	if latStr := c.Query("user_lat"); latStr != "" {
@@ -107,16 +105,15 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 	}
 
 	opts := service.StoreListOptions{
-		Region:          c.Query("region"),
-		District:        c.Query("district"),
-		Search:          c.Query("search"),
-		IncludeProducts: includeProducts,
-		UserLat:         userLat,
-		UserLng:         userLng,
-		IsVerified:      isVerified,
-		IsManaged:       isManaged,
-		Page:            page,
-		PageSize:        pageSize,
+		Region:     c.Query("region"),
+		District:   c.Query("district"),
+		Search:     c.Query("search"),
+		UserLat:    userLat,
+		UserLng:    userLng,
+		IsVerified: isVerified,
+		IsManaged:  isManaged,
+		Page:       page,
+		PageSize:   pageSize,
 	}
 
 	result, err := ctrl.storeService.ListStores(opts)
@@ -205,9 +202,7 @@ func (ctrl *StoreController) GetStoreByID(c *gin.Context) {
 		return
 	}
 
-	includeProducts := strings.EqualFold(c.DefaultQuery("include_products", "false"), "true")
-
-	store, err := ctrl.storeService.GetStoreByID(uint(id), includeProducts)
+	store, err := ctrl.storeService.GetStoreByID(uint(id))
 	if err != nil {
 		if err == service.ErrStoreNotFound {
 			log.Warn("Store not found", map[string]interface{}{
@@ -883,7 +878,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 	}
 
 	// 1. 매장 존재 확인 및 이미 관리 중인지 확인
-	store, err := ctrl.storeService.GetStoreByID(uint(storeID), false)
+	store, err := ctrl.storeService.GetStoreByID(uint(storeID))
 	if err != nil {
 		log.Warn("Store not found for claim", map[string]interface{}{
 			"store_id": storeID,

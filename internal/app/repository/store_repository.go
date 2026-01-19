@@ -8,16 +8,15 @@ import (
 )
 
 type StoreFilter struct {
-	Region          string
-	District        string
-	Search          string
-	IncludeProducts bool
-	IsVerified      *bool    // 인증 매장 필터
-	IsManaged       *bool    // 관리 매장 필터
-	Page            int      // 페이지 번호 (1부터 시작)
-	PageSize        int      // 페이지당 개수
-	UserLat         *float64 // 사용자 위도 (거리순 정렬용)
-	UserLng         *float64 // 사용자 경도 (거리순 정렬용)
+	Region     string
+	District   string
+	Search     string
+	IsVerified *bool    // 인증 매장 필터
+	IsManaged  *bool    // 관리 매장 필터
+	Page       int      // 페이지 번호 (1부터 시작)
+	PageSize   int      // 페이지당 개수
+	UserLat    *float64 // 사용자 위도 (거리순 정렬용)
+	UserLng    *float64 // 사용자 경도 (거리순 정렬용)
 }
 
 type StoreLocation struct {
@@ -36,7 +35,7 @@ type StoreRepository interface {
 	Update(store *model.Store) error
 	Delete(id uint) error
 	FindAll(filter StoreFilter) (*StoreListResult, error)
-	FindByID(id uint, includeProducts bool) (*model.Store, error)
+	FindByID(id uint) (*model.Store, error)
 	FindByUserID(userID uint) ([]model.Store, error)
 	FindSingleByUserID(userID uint) (*model.Store, error)
 	FindByBusinessNumber(businessNumber string) (*model.Store, error)
@@ -141,11 +140,6 @@ func (r *storeRepository) FindAll(filter StoreFilter) (*StoreListResult, error) 
 	})
 
 	query := r.db.Model(&model.Store{}).Preload("Tags")
-	if filter.IncludeProducts {
-		query = query.Preload("Products", func(db *gorm.DB) *gorm.DB {
-			return db.Preload("Options")
-		})
-	}
 
 	// 기본 필터
 	if filter.Region != "" {
@@ -297,17 +291,12 @@ func (r *storeRepository) FindAll(filter StoreFilter) (*StoreListResult, error) 
 	}, nil
 }
 
-func (r *storeRepository) FindByID(id uint, includeProducts bool) (*model.Store, error) {
+func (r *storeRepository) FindByID(id uint) (*model.Store, error) {
 	logger.Debug("Finding store by ID", map[string]interface{}{
 		"store_id": id,
 	})
 
 	query := r.db.Model(&model.Store{}).Preload("Tags").Preload("BusinessRegistration")
-	if includeProducts {
-		query = query.Preload("Products", func(db *gorm.DB) *gorm.DB {
-			return db.Preload("Options")
-		})
-	}
 
 	var store model.Store
 	if err := query.First(&store, id).Error; err != nil {

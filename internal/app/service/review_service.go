@@ -27,7 +27,7 @@ func (s *ReviewService) CreateReview(userID uint, input struct {
 	IsVisitor bool     `json:"is_visitor"`
 }) (*model.StoreReview, error) {
 	// 매장 존재 확인
-	store, err := s.storeRepo.FindByID(input.StoreID, false)
+	store, err := s.storeRepo.FindByID(input.StoreID)
 	if err != nil {
 		return nil, errors.New("매장을 찾을 수 없습니다")
 	}
@@ -66,7 +66,7 @@ func (s *ReviewService) GetReview(id uint) (*model.StoreReview, error) {
 // GetStoreReviews 매장별 리뷰 목록 조회
 func (s *ReviewService) GetStoreReviews(storeID uint, page, pageSize int, sortBy, sortOrder string) ([]model.StoreReview, int64, error) {
 	// 매장 존재 확인
-	store, err := s.storeRepo.FindByID(storeID, false)
+	store, err := s.storeRepo.FindByID(storeID)
 	if err != nil {
 		return nil, 0, errors.New("매장을 찾을 수 없습니다")
 	}
@@ -159,7 +159,7 @@ func (s *ReviewService) ToggleReviewLike(reviewID, userID uint) (bool, error) {
 // GetStoreStatistics 매장 통계 조회
 func (s *ReviewService) GetStoreStatistics(storeID uint) (map[string]interface{}, error) {
 	// 매장 존재 확인
-	store, err := s.storeRepo.FindByID(storeID, false)
+	store, err := s.storeRepo.FindByID(storeID)
 	if err != nil {
 		return nil, errors.New("매장을 찾을 수 없습니다")
 	}
@@ -173,7 +173,7 @@ func (s *ReviewService) GetStoreStatistics(storeID uint) (map[string]interface{}
 // GetStoreGallery 매장 갤러리 조회
 func (s *ReviewService) GetStoreGallery(storeID uint, page, pageSize int) ([]repository.GalleryImage, int64, error) {
 	// 매장 존재 확인
-	store, err := s.storeRepo.FindByID(storeID, false)
+	store, err := s.storeRepo.FindByID(storeID)
 	if err != nil {
 		return nil, 0, errors.New("매장을 찾을 수 없습니다")
 	}

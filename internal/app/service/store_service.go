@@ -18,16 +18,15 @@ var (
 )
 
 type StoreListOptions struct {
-	Region          string
-	District        string
-	Search          string
-	IncludeProducts bool
-	UserLat         *float64 // 사용자 위도 (거리순 정렬용)
-	UserLng         *float64 // 사용자 경도 (거리순 정렬용)
-	IsVerified      *bool    // 인증 매장 필터
-	IsManaged       *bool    // 관리 매장 필터
-	Page            int      // 페이지 번호 (1부터 시작)
-	PageSize        int      // 페이지당 개수
+	Region     string
+	District   string
+	Search     string
+	UserLat    *float64 // 사용자 위도 (거리순 정렬용)
+	UserLng    *float64 // 사용자 경도 (거리순 정렬용)
+	IsVerified *bool    // 인증 매장 필터
+	IsManaged  *bool    // 관리 매장 필터
+	Page       int      // 페이지 번호 (1부터 시작)
+	PageSize   int      // 페이지당 개수
 }
 
 type StoreLocationSummary struct {
@@ -38,7 +37,7 @@ type StoreLocationSummary struct {
 
 type StoreService interface {
 	ListStores(opts StoreListOptions) (*repository.StoreListResult, error)
-	GetStoreByID(id uint, includeProducts bool) (*model.Store, error)
+	GetStoreByID(id uint) (*model.Store, error)
 	GetStoresByUserID(userID uint) ([]model.Store, error)
 	GetStoreByUserID(userID uint) (*model.Store, error)
 	GetStoreByBusinessNumber(businessNumber string) (*model.Store, error)
@@ -104,16 +103,15 @@ func (s *storeService) ListStores(opts StoreListOptions) (*repository.StoreListR
 
 	// Repository에서 거리 계산 및 정렬 처리
 	result, err := s.storeRepo.FindAll(repository.StoreFilter{
-		Region:          opts.Region,
-		District:        opts.District,
-		Search:          opts.Search,
-		IncludeProducts: opts.IncludeProducts,
-		IsVerified:      opts.IsVerified,
-		IsManaged:       opts.IsManaged,
-		Page:            opts.Page,
-		PageSize:        opts.PageSize,
-		UserLat:         opts.UserLat,
-		UserLng:         opts.UserLng,
+		Region:     opts.Region,
+		District:   opts.District,
+		Search:     opts.Search,
+		IsVerified: opts.IsVerified,
+		IsManaged:  opts.IsManaged,
+		Page:       opts.Page,
+		PageSize:   opts.PageSize,
+		UserLat:    opts.UserLat,
+		UserLng:    opts.UserLng,
 	})
 	if err != nil {
 		logger.Error("Failed to list stores", err)
@@ -129,12 +127,12 @@ func (s *storeService) ListStores(opts StoreListOptions) (*repository.StoreListR
 	return result, nil
 }
 
-func (s *storeService) GetStoreByID(id uint, includeProducts bool) (*model.Store, error) {
+func (s *storeService) GetStoreByID(id uint) (*model.Store, error) {
 	logger.Debug("Fetching store by ID", map[string]interface{}{
 		"store_id": id,
 	})
 
-	store, err := s.storeRepo.FindByID(id, includeProducts)
+	store, err := s.storeRepo.FindByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			logger.Warn("Store not found", map[string]interface{}{
@@ -279,7 +277,7 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 		"user_id":  userID,
 	})
 
-	existing, err := s.storeRepo.FindByID(storeID, false)
+	existing, err := s.storeRepo.FindByID(storeID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			logger.Warn("Store not found for update", map[string]interface{}{
@@ -403,7 +401,7 @@ func (s *storeService) DeleteStore(userID uint, storeID uint) error {
 		"user_id":  userID,
 	})
 
-	existing, err := s.storeRepo.FindByID(storeID, false)
+	existing, err := s.storeRepo.FindByID(storeID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			logger.Warn("Store not found for delete", map[string]interface{}{
@@ -512,7 +510,7 @@ func (s *storeService) ToggleStoreLike(storeID, userID uint) (bool, error) {
 	})
 
 	// 매장 존재 확인
-	_, err := s.storeRepo.FindByID(storeID, false)
+	_, err := s.storeRepo.FindByID(storeID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			logger.Warn("Store not found for like toggle", map[string]interface{}{
@@ -696,7 +694,7 @@ func (s *storeService) UpdateStoreOwnership(store *model.Store) (*model.Store, e
 	})
 
 	// Reload store with all associations
-	updated, err := s.storeRepo.FindByID(store.ID, true)
+	updated, err := s.storeRepo.FindByID(store.ID)
 	if err != nil {
 		logger.Error("Failed to reload claimed store", err, map[string]interface{}{
 			"store_id": store.ID,
@@ -765,9 +763,9 @@ func (s *storeService) ClaimStoreTransaction(store *model.Store, userID uint) (*
 		Update("nickname", store.Name).Error; err != nil {
 		tx.Rollback()
 		logger.Error("Failed to update user nickname in claim transaction", err, map[string]interface{}{
-			"user_id":   userID,
-			"store_id":  store.ID,
-			"nickname":  store.Name,
+			"user_id":  userID,
+			"store_id": store.ID,
+			"nickname": store.Name,
 		})
 		return nil, err
 	}
@@ -789,7 +787,7 @@ func (s *storeService) ClaimStoreTransaction(store *model.Store, userID uint) (*
 	})
 
 	// Reload store with all associations
-	updated, err := s.storeRepo.FindByID(store.ID, true)
+	updated, err := s.storeRepo.FindByID(store.ID)
 	if err != nil {
 		logger.Error("Failed to reload claimed store", err, map[string]interface{}{
 			"store_id": store.ID,
@@ -900,7 +898,7 @@ func (s *storeService) ApproveStoreVerification(storeID uint, verifiedAt *time.T
 		"store_id": storeID,
 	})
 
-	store, err := s.storeRepo.FindByID(storeID, false)
+	store, err := s.storeRepo.FindByID(storeID)
 	if err != nil {
 		logger.Error("Store not found for verification approval", err, map[string]interface{}{
 			"store_id": storeID,
