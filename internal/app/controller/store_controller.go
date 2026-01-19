@@ -50,18 +50,18 @@ type StoreRequest struct {
 
 // UpdateStoreRequest 매장 정보 수정 요청 (사업자 정보는 수정 불가)
 type UpdateStoreRequest struct {
-	Name        string   `json:"name" binding:"required"`
-	Region      string   `json:"region"`
-	District    string   `json:"district"`
-	Address     string   `json:"address"`
-	Latitude    *float64 `json:"latitude"`
-	Longitude   *float64 `json:"longitude"`
-	PhoneNumber string   `json:"phone_number"`
-	ImageURL    string   `json:"image_url"`
-	Description string   `json:"description"`
-	OpenTime    string   `json:"open_time"`
-	CloseTime   string   `json:"close_time"`
-	TagIDs      []uint   `json:"tag_ids"` // 매장 태그 ID 배열
+	Name        *string   `json:"name,omitempty"`
+	Region      *string   `json:"region,omitempty"`
+	District    *string   `json:"district,omitempty"`
+	Address     *string   `json:"address,omitempty"`
+	Latitude    *float64  `json:"latitude,omitempty"`
+	Longitude   *float64  `json:"longitude,omitempty"`
+	PhoneNumber *string   `json:"phone_number,omitempty"`
+	ImageURL    *string   `json:"image_url,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	OpenTime    *string   `json:"open_time,omitempty"`
+	CloseTime   *string   `json:"close_time,omitempty"`
+	TagIDs      []uint    `json:"tag_ids,omitempty"` // 매장 태그 ID 배열
 }
 
 func (ctrl *StoreController) ListStores(c *gin.Context) {
@@ -453,7 +453,7 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 		return
 	}
 
-	var req StoreRequest
+	var req UpdateStoreRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Warn("Invalid store update request", map[string]interface{}{
 			"store_id": storeID,

@@ -67,17 +67,17 @@ type storeService struct {
 }
 
 type StoreMutation struct {
-	Name        string
-	Region      string
-	District    string
-	Address     string
+	Name        *string
+	Region      *string
+	District    *string
+	Address     *string
 	Latitude    *float64
 	Longitude   *float64
-	PhoneNumber string
-	ImageURL    string
-	Description string
-	OpenTime    string
-	CloseTime   string
+	PhoneNumber *string
+	ImageURL    *string
+	Description *string
+	OpenTime    *string
+	CloseTime   *string
 	TagIDs      []uint // 태그 ID 배열
 }
 
@@ -300,57 +300,85 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 	}
 
 	// Check if store name changed
-	storeNameChanged := existing.Name != input.Name
+	storeNameChanged := false
+	if input.Name != nil && existing.Name != *input.Name {
+		storeNameChanged = true
+		existing.Name = *input.Name
+	}
 
-	existing.Name = input.Name
-	existing.Region = input.Region
-	existing.District = input.District
+	// Update region if provided
+	if input.Region != nil {
+		existing.Region = *input.Region
+	}
+
+	// Update district if provided
+	if input.District != nil {
+		existing.District = *input.District
+	}
 
 	// Address handling with geocoding
-	addressChanged := existing.Address != input.Address
-	existing.Address = input.Address
+	addressChanged := false
+	if input.Address != nil && existing.Address != *input.Address {
+		addressChanged = true
+		existing.Address = *input.Address
 
-	// If address changed, geocode it to get new coordinates
-	if addressChanged && input.Address != "" {
-		lat, lng, err := util.GeocodeAddress(input.Address)
-		if err != nil {
-			logger.Warn("Failed to geocode store address, using provided coordinates", map[string]interface{}{
-				"store_id": storeID,
-				"address":  input.Address,
-				"error":    err.Error(),
-			})
-			// Fall back to provided coordinates if geocoding fails
-			existing.Latitude = input.Latitude
-			existing.Longitude = input.Longitude
+		// If address changed and not empty, geocode it to get new coordinates
+		if *input.Address != "" {
+			lat, lng, err := util.GeocodeAddress(*input.Address)
+			if err != nil {
+				logger.Warn("Failed to geocode store address, using provided coordinates", map[string]interface{}{
+					"store_id": storeID,
+					"address":  *input.Address,
+					"error":    err.Error(),
+				})
+				// Fall back to provided coordinates if geocoding fails
+				if input.Latitude != nil {
+					existing.Latitude = input.Latitude
+				}
+				if input.Longitude != nil {
+					existing.Longitude = input.Longitude
+				}
+			} else {
+				existing.Latitude = lat
+				existing.Longitude = lng
+				logger.Info("Successfully geocoded store address", map[string]interface{}{
+					"store_id":  storeID,
+					"address":   *input.Address,
+					"latitude":  lat,
+					"longitude": lng,
+				})
+			}
 		} else {
-			existing.Latitude = lat
-			existing.Longitude = lng
-			logger.Info("Successfully geocoded store address", map[string]interface{}{
-				"store_id":  storeID,
-				"address":   input.Address,
-				"latitude":  lat,
-				"longitude": lng,
-			})
+			// Address cleared
+			existing.Latitude = nil
+			existing.Longitude = nil
 		}
 	} else if !addressChanged {
-		// If address didn't change, keep existing coordinates or use provided ones
+		// If address didn't change, update coordinates only if provided
 		if input.Latitude != nil {
 			existing.Latitude = input.Latitude
 		}
 		if input.Longitude != nil {
 			existing.Longitude = input.Longitude
 		}
-	} else {
-		// Address cleared
-		existing.Latitude = nil
-		existing.Longitude = nil
 	}
 
-	existing.PhoneNumber = input.PhoneNumber
-	existing.ImageURL = input.ImageURL
-	existing.Description = input.Description
-	existing.OpenTime = input.OpenTime
-	existing.CloseTime = input.CloseTime
+	// Update other fields if provided
+	if input.PhoneNumber != nil {
+		existing.PhoneNumber = *input.PhoneNumber
+	}
+	if input.ImageURL != nil {
+		existing.ImageURL = *input.ImageURL
+	}
+	if input.Description != nil {
+		existing.Description = *input.Description
+	}
+	if input.OpenTime != nil {
+		existing.OpenTime = *input.OpenTime
+	}
+	if input.CloseTime != nil {
+		existing.CloseTime = *input.CloseTime
+	}
 
 	// 태그 업데이트 (Many-to-Many 관계)
 	if input.TagIDs != nil {
@@ -369,21 +397,21 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 	}
 
 	// Update user's nickname to new store name if it changed and user is admin
-	if storeNameChanged {
+	if storeNameChanged && input.Name != nil {
 		user, err := s.userRepo.FindByID(userID)
 		if err == nil && user.Role == model.RoleAdmin {
-			user.Nickname = input.Name
+			user.Nickname = *input.Name
 			if err := s.userRepo.Update(user); err != nil {
 				logger.Warn("Failed to update user nickname after store name change", map[string]interface{}{
 					"user_id":    userID,
-					"store_name": input.Name,
+					"store_name": *input.Name,
 					"error":      err.Error(),
 				})
 				// Don't fail the entire operation if nickname update fails
 			} else {
 				logger.Info("User nickname updated to new store name", map[string]interface{}{
 					"user_id":  userID,
-					"nickname": input.Name,
+					"nickname": *input.Name,
 				})
 			}
 		}

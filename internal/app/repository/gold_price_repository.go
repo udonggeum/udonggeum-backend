@@ -12,6 +12,7 @@ import (
 type GoldPriceRepository interface {
 	Create(goldPrice *model.GoldPrice) error
 	FindAll() ([]model.GoldPrice, error)
+	FindByID(id uint) (*model.GoldPrice, error)
 	FindByType(priceType model.GoldPriceType) (*model.GoldPrice, error)
 	FindLatest() ([]model.GoldPrice, error)
 	FindByTypeAndDate(priceType model.GoldPriceType, date time.Time) (*model.GoldPrice, error)
@@ -46,6 +47,19 @@ func (r *goldPriceRepository) FindAll() ([]model.GoldPrice, error) {
 		return nil, err
 	}
 	return goldPrices, nil
+}
+
+// FindByID ID로 금 시세 조회
+func (r *goldPriceRepository) FindByID(id uint) (*model.GoldPrice, error) {
+	var goldPrice model.GoldPrice
+	if err := r.db.First(&goldPrice, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logger.Error("Failed to find gold price by ID", err)
+		return nil, err
+	}
+	return &goldPrice, nil
 }
 
 // FindByType 특정 유형의 최신 금 시세 조회

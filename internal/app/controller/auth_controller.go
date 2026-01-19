@@ -37,11 +37,11 @@ type LoginRequest struct {
 }
 
 type UpdateProfileRequest struct {
-	Name         string `json:"name"`
-	Phone        string `json:"phone"`
-	Nickname     string `json:"nickname"`
-	Address      string `json:"address"`
-	ProfileImage string `json:"profile_image"` // S3 URL from upload API
+	Name         *string `json:"name,omitempty"`
+	Phone        *string `json:"phone,omitempty"`
+	Nickname     *string `json:"nickname,omitempty"`
+	Address      *string `json:"address,omitempty"`
+	ProfileImage *string `json:"profile_image,omitempty"` // S3 URL from upload API
 }
 
 type CheckNicknameRequest struct {
@@ -490,7 +490,7 @@ func (ctrl *AuthController) CheckNickname(c *gin.Context) {
 	}
 
 	log.Info("Nickname availability checked", map[string]interface{}{
-		"nickname":    req.Nickname,
+		"nickname":     req.Nickname,
 		"is_available": isAvailable,
 	})
 
@@ -579,12 +579,12 @@ func (ctrl *AuthController) KakaoCallback(c *gin.Context) {
 		// Provide more specific error messages
 		errStr := err.Error()
 		if errors.Is(err, service.ErrUserNotFound) ||
-		   strings.Contains(errStr, "email consent required") ||
-		   strings.Contains(errStr, "missing email") {
+			strings.Contains(errStr, "email consent required") ||
+			strings.Contains(errStr, "missing email") {
 			apperrors.BadRequest(c, apperrors.AuthEmailNotVerified, "카카오 로그인 시 이메일 동의가 필요합니다")
 			return
 		} else if strings.Contains(errStr, "status 401") ||
-		          strings.Contains(errStr, "status 400") {
+			strings.Contains(errStr, "status 400") {
 			apperrors.Unauthorized(c, "카카오 인증에 실패했습니다. 다시 시도해주세요")
 			return
 		}

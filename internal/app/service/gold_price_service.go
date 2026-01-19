@@ -33,6 +33,7 @@ type GoldPriceData struct {
 // GoldPriceService 금 시세 서비스 인터페이스
 type GoldPriceService interface {
 	GetLatestPrices() ([]model.GoldPriceResponse, error)
+	GetPriceByID(id uint) (*model.GoldPrice, error)
 	GetPriceByType(priceType model.GoldPriceType) (*model.GoldPriceResponse, error)
 	GetPriceHistory(priceType model.GoldPriceType, period string) ([]model.GoldPriceHistoryItem, error)
 	UpdatePricesFromExternalAPI() error
@@ -203,8 +204,24 @@ func getPeriodDays(period string) int {
 	}
 }
 
+// GetPriceByID ID로 금 시세 조회
+func (s *goldPriceService) GetPriceByID(id uint) (*model.GoldPrice, error) {
+	goldPrice, err := s.repo.FindByID(id)
+	if err != nil {
+		logger.Error("Failed to get gold price by ID", err)
+		return nil, err
+	}
+	if goldPrice == nil {
+		return nil, fmt.Errorf("금 시세를 찾을 수 없습니다")
+	}
+	return goldPrice, nil
+}
+
 // UpdatePrice 금 시세 업데이트
 func (s *goldPriceService) UpdatePrice(goldPrice *model.GoldPrice) error {
+	if goldPrice == nil {
+		return fmt.Errorf("goldPrice cannot be nil")
+	}
 	if err := s.repo.Update(goldPrice); err != nil {
 		logger.Error("Failed to update gold price", err)
 		return err

@@ -33,10 +33,10 @@ type CreateGoldPriceRequest struct {
 
 // UpdateGoldPriceRequest 금 시세 업데이트 요청
 type UpdateGoldPriceRequest struct {
-	BuyPrice    float64 `json:"buy_price" binding:"omitempty,gt=0"`
-	SellPrice   float64 `json:"sell_price" binding:"omitempty,gt=0"`
-	Source      string  `json:"source"`
-	Description string  `json:"description"`
+	BuyPrice    *float64 `json:"buy_price,omitempty" binding:"omitempty,gt=0"`
+	SellPrice   *float64 `json:"sell_price,omitempty" binding:"omitempty,gt=0"`
+	Source      *string  `json:"source,omitempty"`
+	Description *string  `json:"description,omitempty"`
 }
 
 // GetLatestPrices 최신 금 시세 조회 (모든 유형)
@@ -229,12 +229,25 @@ func (ctrl *GoldPriceController) UpdatePrice(c *gin.Context) {
 		return
 	}
 
-	goldPrice := &model.GoldPrice{
-		ID:          uint(id),
-		BuyPrice:    req.BuyPrice,
-		SellPrice:   req.SellPrice,
-		Source:      req.Source,
-		Description: req.Description,
+	// 기존 데이터 조회
+	goldPrice, err := ctrl.goldPriceService.GetPriceByID(uint(id))
+	if err != nil {
+		apperrors.NotFound(c, "GOLD_PRICE_NOT_FOUND", "금 시세를 찾을 수 없습니다")
+		return
+	}
+
+	// 포인터 필드 확인 후 업데이트
+	if req.BuyPrice != nil {
+		goldPrice.BuyPrice = *req.BuyPrice
+	}
+	if req.SellPrice != nil {
+		goldPrice.SellPrice = *req.SellPrice
+	}
+	if req.Source != nil {
+		goldPrice.Source = *req.Source
+	}
+	if req.Description != nil {
+		goldPrice.Description = *req.Description
 	}
 
 	if err := ctrl.goldPriceService.UpdatePrice(goldPrice); err != nil {

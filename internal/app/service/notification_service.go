@@ -152,7 +152,12 @@ func (s *notificationService) UpdateNotificationSettings(
 		return nil, err
 	}
 
-	// 설정 업데이트
+	// settings가 nil인지 확인 (안전성 체크)
+	if settings == nil {
+		return nil, fmt.Errorf("알림 설정을 찾을 수 없습니다")
+	}
+
+	// 설정 업데이트 (nil 체크 후 역참조)
 	if req.SellPostNotification != nil {
 		settings.SellPostNotification = *req.SellPostNotification
 	}

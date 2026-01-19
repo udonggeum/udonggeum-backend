@@ -36,7 +36,7 @@ type AuthService interface {
 	Register(email, password, name, nickname, phone string) (*model.User, *util.TokenPair, error)
 	Login(email, password string) (*model.User, *util.TokenPair, error)
 	GetUserByID(id uint) (*model.User, error)
-	UpdateProfile(userID uint, name, phone, nickname, address, profileImage string) (*model.User, error)
+	UpdateProfile(userID uint, name, phone, nickname, address, profileImage *string) (*model.User, error)
 	CheckNickname(nickname string) (bool, error)
 	CheckEmailAvailability(email string) (bool, error)
 	RefreshToken(refreshToken string) (*util.TokenPair, error)
@@ -269,7 +269,7 @@ func (s *authService) GetUserByID(id uint) (*model.User, error) {
 	return user, nil
 }
 
-func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address, profileImage string) (*model.User, error) {
+func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address, profileImage *string) (*model.User, error) {
 	logger.Info("Updating user profile", map[string]interface{}{
 		"user_id": userID,
 	})
@@ -289,17 +289,17 @@ func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address,
 		return nil, err
 	}
 
-	// Update fields if provided
+	// Update fields if provided (nil 체크 후 포인터 역참조)
 	updated := false
-	if name != "" && name != user.Name {
-		user.Name = name
+	if name != nil && *name != "" && *name != user.Name {
+		user.Name = *name
 		updated = true
 	}
-	if phone != "" && phone != user.Phone {
-		user.Phone = phone
+	if phone != nil && *phone != "" && *phone != user.Phone {
+		user.Phone = *phone
 		updated = true
 	}
-	if nickname != "" && nickname != user.Nickname {
+	if nickname != nil && *nickname != "" && *nickname != user.Nickname {
 		// Admin 사용자는 닉네임을 직접 수정할 수 없음 (매장 이름과 자동 동기화됨)
 		if user.Role == model.RoleAdmin {
 			logger.Warn("Admin users cannot update nickname directly", map[string]interface{}{
@@ -309,33 +309,33 @@ func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address,
 		}
 
 		// Check if nickname already exists
-		existingUser, err := s.userRepo.FindByNickname(nickname)
+		existingUser, err := s.userRepo.FindByNickname(*nickname)
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			logger.Error("Failed to check existing nickname", err, map[string]interface{}{
-				"nickname": nickname,
+				"nickname": *nickname,
 			})
 			return nil, err
 		}
 		if existingUser != nil && existingUser.ID != userID {
 			logger.Warn("Nickname already exists", map[string]interface{}{
-				"nickname": nickname,
+				"nickname": *nickname,
 			})
 			return nil, ErrNicknameAlreadyExists
 		}
-		user.Nickname = nickname
+		user.Nickname = *nickname
 		updated = true
 	}
-	// Address can be empty (to clear it), so we don't check for empty string
-	if address != user.Address {
-		user.Address = address
+	// Address can be empty (to clear it), so we check nil but allow empty string
+	if address != nil && *address != user.Address {
+		user.Address = *address
 		updated = true
 
 		// Geocode the address to get latitude and longitude
-		if address != "" {
-			lat, lng, err := util.GeocodeAddress(address)
+		if *address != "" {
+			lat, lng, err := util.GeocodeAddress(*address)
 			if err != nil {
 				logger.Warn("Failed to geocode address, continuing without coordinates", map[string]interface{}{
-					"address": address,
+					"address": *address,
 					"error":   err.Error(),
 				})
 				// Don't fail the update if geocoding fails
@@ -344,7 +344,7 @@ func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address,
 				user.Latitude = lat
 				user.Longitude = lng
 				logger.Info("Successfully geocoded address", map[string]interface{}{
-					"address":   address,
+					"address":   *address,
 					"latitude":  lat,
 					"longitude": lng,
 				})
@@ -356,8 +356,8 @@ func (s *authService) UpdateProfile(userID uint, name, phone, nickname, address,
 		}
 	}
 	// ProfileImage can be empty (to clear it) or update to new URL
-	if profileImage != user.ProfileImage {
-		user.ProfileImage = profileImage
+	if profileImage != nil && *profileImage != user.ProfileImage {
+		user.ProfileImage = *profileImage
 		updated = true
 	}
 
