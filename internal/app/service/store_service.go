@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
@@ -45,6 +46,7 @@ type StoreService interface {
 	CreateStore(store *model.Store) (*model.Store, error)
 	UpdateStore(userID uint, storeID uint, input StoreMutation) (*model.Store, error)
 	UpdateStoreOwnership(store *model.Store) (*model.Store, error)
+	ClaimStoreTransaction(store *model.Store, userID uint) (*model.Store, error)
 	DeleteStore(userID uint, storeID uint) error
 	ToggleStoreLike(storeID, userID uint) (bool, error)
 	IsStoreLiked(storeID, userID uint) (bool, error)
@@ -217,7 +219,24 @@ func (s *storeService) CreateStore(store *model.Store) (*model.Store, error) {
 		}
 	}
 
-	if err := s.storeRepo.Create(store); err != nil {
+	// Begin transaction to ensure atomic store creation + user nickname update
+	tx := s.db.Begin()
+	if tx.Error != nil {
+		logger.Error("Failed to begin transaction for CreateStore", tx.Error)
+		return nil, tx.Error
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			logger.Error("Panic in CreateStore, transaction rolled back", fmt.Errorf("%v", r))
+			panic(r)
+		}
+	}()
+
+	// Create store
+	if err := tx.Create(store).Error; err != nil {
+		tx.Rollback()
 		logger.Error("Failed to create store", err, map[string]interface{}{
 			"name":    store.Name,
 			"user_id": store.UserID,
@@ -227,23 +246,24 @@ func (s *storeService) CreateStore(store *model.Store) (*model.Store, error) {
 
 	// Update user's nickname to store name (매장 등록 시 무조건 닉네임 변경)
 	if store.UserID != nil {
-		user, err := s.userRepo.FindByID(*store.UserID)
-		if err == nil {
-			user.Nickname = store.Name
-			if err := s.userRepo.Update(user); err != nil {
-				logger.Warn("Failed to update user nickname after store creation", map[string]interface{}{
-					"user_id":    *store.UserID,
-					"store_name": store.Name,
-					"error":      err.Error(),
-				})
-				// Don't fail the entire operation if nickname update fails
-			} else {
-				logger.Info("User nickname updated to store name", map[string]interface{}{
-					"user_id":  *store.UserID,
-					"nickname": store.Name,
-				})
-			}
+		if err := tx.Model(&model.User{}).Where("id = ?", *store.UserID).Update("nickname", store.Name).Error; err != nil {
+			tx.Rollback()
+			logger.Error("Failed to update user nickname after store creation", err, map[string]interface{}{
+				"user_id":    *store.UserID,
+				"store_name": store.Name,
+			})
+			return nil, fmt.Errorf("failed to update user nickname: %w", err)
 		}
+		logger.Info("User nickname updated to store name", map[string]interface{}{
+			"user_id":  *store.UserID,
+			"nickname": store.Name,
+		})
+	}
+
+	// Commit transaction
+	if err := tx.Commit().Error; err != nil {
+		logger.Error("Failed to commit CreateStore transaction", err)
+		return nil, err
 	}
 
 	logger.Info("Store created", map[string]interface{}{
@@ -405,14 +425,56 @@ func (s *storeService) DeleteStore(userID uint, storeID uint) error {
 		return ErrStoreAccessDenied
 	}
 
-	if err := s.storeRepo.Delete(storeID); err != nil {
+	// 트랜잭션으로 Store와 연관 데이터를 함께 soft delete
+	tx := s.db.Begin()
+	if tx.Error != nil {
+		logger.Error("Failed to begin transaction for store deletion", tx.Error, map[string]interface{}{
+			"store_id": storeID,
+		})
+		return tx.Error
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			logger.Error("Transaction rolled back due to panic during store deletion", nil, map[string]interface{}{
+				"store_id": storeID,
+				"panic":    r,
+			})
+		}
+	}()
+
+	// Store soft delete
+	if err := tx.Delete(&model.Store{}, storeID).Error; err != nil {
+		tx.Rollback()
 		logger.Error("Failed to delete store", err, map[string]interface{}{
 			"store_id": storeID,
 		})
 		return err
 	}
 
-	logger.Info("Store deleted", map[string]interface{}{
+	// BusinessRegistration soft delete (if exists)
+	if err := tx.Where("store_id = ?", storeID).Delete(&model.BusinessRegistration{}).Error; err != nil {
+		// BusinessRegistration이 없을 수도 있으므로 RecordNotFound는 무시
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			tx.Rollback()
+			logger.Error("Failed to delete business registration", err, map[string]interface{}{
+				"store_id": storeID,
+			})
+			return err
+		}
+	}
+
+	// 트랜잭션 커밋
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		logger.Error("Failed to commit store deletion transaction", err, map[string]interface{}{
+			"store_id": storeID,
+		})
+		return err
+	}
+
+	logger.Info("Store and related data deleted successfully", map[string]interface{}{
 		"store_id": storeID,
 	})
 	return nil
@@ -609,24 +671,13 @@ func (s *storeService) UpdateStoreOwnership(store *model.Store) (*model.Store, e
 		}
 	}()
 
-	// Update store with new ownership information
+	// Update store with new ownership information (including business registration via association)
 	if err := tx.Save(store).Error; err != nil {
 		tx.Rollback()
 		logger.Error("Failed to update store ownership", err, map[string]interface{}{
 			"store_id": store.ID,
 		})
 		return nil, err
-	}
-
-	// Create business registration if provided
-	if store.BusinessRegistration != nil {
-		if err := tx.Create(store.BusinessRegistration).Error; err != nil {
-			tx.Rollback()
-			logger.Error("Failed to create business registration for claimed store", err, map[string]interface{}{
-				"store_id": store.ID,
-			})
-			return nil, err
-		}
 	}
 
 	// 트랜잭션 커밋
@@ -641,6 +692,99 @@ func (s *storeService) UpdateStoreOwnership(store *model.Store) (*model.Store, e
 	logger.Info("Store ownership updated successfully", map[string]interface{}{
 		"store_id":   store.ID,
 		"user_id":    store.UserID,
+		"is_managed": store.IsManaged,
+	})
+
+	// Reload store with all associations
+	updated, err := s.storeRepo.FindByID(store.ID, true)
+	if err != nil {
+		logger.Error("Failed to reload claimed store", err, map[string]interface{}{
+			"store_id": store.ID,
+		})
+		return nil, err
+	}
+
+	return updated, nil
+}
+
+// ClaimStoreTransaction handles the entire store claim process in a single transaction
+// This ensures atomicity: either all operations succeed (store update + user promotion) or all fail
+func (s *storeService) ClaimStoreTransaction(store *model.Store, userID uint) (*model.Store, error) {
+	logger.Info("Starting store claim transaction", map[string]interface{}{
+		"store_id": store.ID,
+		"user_id":  userID,
+	})
+
+	// 트랜잭션 시작
+	tx := s.db.Begin()
+	if tx.Error != nil {
+		logger.Error("Failed to begin transaction for store claim", tx.Error, map[string]interface{}{
+			"store_id": store.ID,
+			"user_id":  userID,
+		})
+		return nil, tx.Error
+	}
+
+	// 트랜잭션 완료 시 커밋 또는 롤백
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			logger.Error("Transaction rolled back due to panic during store claim", nil, map[string]interface{}{
+				"store_id": store.ID,
+				"user_id":  userID,
+				"panic":    r,
+			})
+		}
+	}()
+
+	// 1. Store 업데이트 (BusinessRegistration은 GORM association으로 자동 저장)
+	if err := tx.Save(store).Error; err != nil {
+		tx.Rollback()
+		logger.Error("Failed to update store in claim transaction", err, map[string]interface{}{
+			"store_id": store.ID,
+			"user_id":  userID,
+		})
+		return nil, err
+	}
+
+	// 2. User role을 admin으로 승격
+	if err := tx.Model(&model.User{}).
+		Where("id = ?", userID).
+		Update("role", model.RoleAdmin).Error; err != nil {
+		tx.Rollback()
+		logger.Error("Failed to promote user to admin in claim transaction", err, map[string]interface{}{
+			"user_id":  userID,
+			"store_id": store.ID,
+		})
+		return nil, err
+	}
+
+	// 3. User nickname을 store name으로 업데이트
+	if err := tx.Model(&model.User{}).
+		Where("id = ?", userID).
+		Update("nickname", store.Name).Error; err != nil {
+		tx.Rollback()
+		logger.Error("Failed to update user nickname in claim transaction", err, map[string]interface{}{
+			"user_id":   userID,
+			"store_id":  store.ID,
+			"nickname":  store.Name,
+		})
+		return nil, err
+	}
+
+	// 4. 트랜잭션 커밋
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		logger.Error("Failed to commit store claim transaction", err, map[string]interface{}{
+			"store_id": store.ID,
+			"user_id":  userID,
+		})
+		return nil, err
+	}
+
+	logger.Info("Store claim transaction completed successfully", map[string]interface{}{
+		"store_id":   store.ID,
+		"user_id":    userID,
 		"is_managed": store.IsManaged,
 	})
 

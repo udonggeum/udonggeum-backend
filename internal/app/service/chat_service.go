@@ -6,6 +6,7 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/repository"
 	"github.com/ikkim/udonggeum-backend/internal/websocket"
+	"gorm.io/gorm"
 )
 
 type ChatService interface {
@@ -29,12 +30,14 @@ type ChatService interface {
 }
 
 type chatService struct {
+	db   *gorm.DB
 	repo repository.ChatRepository
 	hub  *websocket.Hub
 }
 
-func NewChatService(repo repository.ChatRepository, hub *websocket.Hub) ChatService {
+func NewChatService(db *gorm.DB, repo repository.ChatRepository, hub *websocket.Hub) ChatService {
 	return &chatService{
+		db:   db,
 		repo: repo,
 		hub:  hub,
 	}
@@ -49,18 +52,61 @@ func (s *chatService) CreateOrGetChatRoom(user1ID, user2ID uint, roomType model.
 	}
 
 	if existingRoom != nil {
-		// 기존 채팅방이 있으면, 사용자가 나간 상태인지 확인하고 다시 참여 처리
-		if (existingRoom.User1ID == user1ID && existingRoom.User1LeftAt != nil) ||
-			(existingRoom.User2ID == user1ID && existingRoom.User2LeftAt != nil) {
-			// 나간 상태였다면 다시 참여 처리
-			if err := s.repo.RejoinChatRoom(existingRoom.ID, user1ID); err != nil {
-				return nil, false, err
-			}
+		// 재참여가 필요한지 확인
+		needsRejoin := false
+		user1NeedsRejoin := (existingRoom.User1ID == user1ID && existingRoom.User1LeftAt != nil) ||
+			(existingRoom.User2ID == user1ID && existingRoom.User2LeftAt != nil)
+		user2NeedsRejoin := (existingRoom.User1ID == user2ID && existingRoom.User1LeftAt != nil) ||
+			(existingRoom.User2ID == user2ID && existingRoom.User2LeftAt != nil)
+
+		if user1NeedsRejoin || user2NeedsRejoin {
+			needsRejoin = true
 		}
-		if (existingRoom.User1ID == user2ID && existingRoom.User1LeftAt != nil) ||
-			(existingRoom.User2ID == user2ID && existingRoom.User2LeftAt != nil) {
-			// 나간 상태였다면 다시 참여 처리
-			if err := s.repo.RejoinChatRoom(existingRoom.ID, user2ID); err != nil {
+
+		// 재참여가 필요하면 트랜잭션으로 처리
+		if needsRejoin {
+			tx := s.db.Begin()
+			if tx.Error != nil {
+				return nil, false, tx.Error
+			}
+
+			defer func() {
+				if r := recover(); r != nil {
+					tx.Rollback()
+				}
+			}()
+
+			// User1 재참여
+			if user1NeedsRejoin {
+				leftAtField := "user1_left_at"
+				if existingRoom.User2ID == user1ID {
+					leftAtField = "user2_left_at"
+				}
+				if err := tx.Model(&model.ChatRoom{}).
+					Where("id = ?", existingRoom.ID).
+					Update(leftAtField, nil).Error; err != nil {
+					tx.Rollback()
+					return nil, false, err
+				}
+			}
+
+			// User2 재참여
+			if user2NeedsRejoin {
+				leftAtField := "user1_left_at"
+				if existingRoom.User2ID == user2ID {
+					leftAtField = "user2_left_at"
+				}
+				if err := tx.Model(&model.ChatRoom{}).
+					Where("id = ?", existingRoom.ID).
+					Update(leftAtField, nil).Error; err != nil {
+					tx.Rollback()
+					return nil, false, err
+				}
+			}
+
+			// 트랜잭션 커밋
+			if err := tx.Commit().Error; err != nil {
+				tx.Rollback()
 				return nil, false, err
 			}
 		}
@@ -185,7 +231,31 @@ func (s *chatService) SendMessage(roomID, senderID uint, content string, message
 		messageType = "TEXT"
 	}
 
-	// 메시지 생성
+	// 수신자 ID 계산
+	recipientID := room.User1ID
+	if senderID == room.User1ID {
+		recipientID = room.User2ID
+	}
+
+	// 읽지 않은 메시지 수 필드 결정
+	unreadCountField := "user1_unread_count"
+	if recipientID == room.User2ID {
+		unreadCountField = "user2_unread_count"
+	}
+
+	// 트랜잭션 시작
+	tx := s.db.Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// 1. 메시지 생성
 	message := &model.Message{
 		ChatRoomID:  roomID,
 		SenderID:    senderID,
@@ -194,7 +264,34 @@ func (s *chatService) SendMessage(roomID, senderID uint, content string, message
 		IsRead:      false,
 	}
 
-	if err := s.repo.CreateMessage(message); err != nil {
+	if err := tx.Create(message).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	// 2. 채팅방의 마지막 메시지 정보 업데이트
+	if err := tx.Model(&model.ChatRoom{}).
+		Where("id = ?", roomID).
+		Updates(map[string]interface{}{
+			"last_message_id":      message.ID,
+			"last_message_content": content,
+			"last_message_at":      message.CreatedAt,
+		}).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	// 3. 수신자의 읽지 않은 메시지 수 증가
+	if err := tx.Model(&model.ChatRoom{}).
+		Where("id = ?", roomID).
+		UpdateColumn(unreadCountField, gorm.Expr(unreadCountField+" + ?", 1)).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	// 트랜잭션 커밋
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
 		return nil, err
 	}
 
@@ -204,21 +301,7 @@ func (s *chatService) SendMessage(roomID, senderID uint, content string, message
 		return nil, err
 	}
 
-	// 채팅방의 마지막 메시지 정보 업데이트
-	if err := s.repo.UpdateChatRoomLastMessage(roomID, message.ID, content, message.CreatedAt); err != nil {
-		return nil, err
-	}
-
-	// 수신자의 읽지 않은 메시지 수 증가
-	recipientID := room.User1ID
-	if senderID == room.User1ID {
-		recipientID = room.User2ID
-	}
-	if err := s.repo.IncrementUnreadCount(roomID, recipientID); err != nil {
-		return nil, err
-	}
-
-	// WebSocket으로 실시간 전송
+	// WebSocket으로 실시간 전송 (트랜잭션 외부에서 처리)
 	wsMessage := map[string]interface{}{
 		"type":    "new_message",
 		"message": createdMessage,
@@ -300,7 +383,39 @@ func (s *chatService) SendMessageWithFile(roomID, senderID uint, content string,
 		messageType = "TEXT"
 	}
 
-	// 메시지 생성
+	// 수신자 ID 계산
+	recipientID := room.User1ID
+	if senderID == room.User1ID {
+		recipientID = room.User2ID
+	}
+
+	// 읽지 않은 메시지 수 필드 결정
+	unreadCountField := "user1_unread_count"
+	if recipientID == room.User2ID {
+		unreadCountField = "user2_unread_count"
+	}
+
+	// 마지막 메시지 내용 결정
+	lastMessageContent := content
+	if messageType == "IMAGE" {
+		lastMessageContent = "📷 이미지"
+	} else if messageType == "FILE" {
+		lastMessageContent = "📎 " + fileName
+	}
+
+	// 트랜잭션 시작
+	tx := s.db.Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// 1. 메시지 생성
 	message := &model.Message{
 		ChatRoomID:  roomID,
 		SenderID:    senderID,
@@ -311,7 +426,34 @@ func (s *chatService) SendMessageWithFile(roomID, senderID uint, content string,
 		IsRead:      false,
 	}
 
-	if err := s.repo.CreateMessage(message); err != nil {
+	if err := tx.Create(message).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	// 2. 채팅방의 마지막 메시지 정보 업데이트
+	if err := tx.Model(&model.ChatRoom{}).
+		Where("id = ?", roomID).
+		Updates(map[string]interface{}{
+			"last_message_id":      message.ID,
+			"last_message_content": lastMessageContent,
+			"last_message_at":      message.CreatedAt,
+		}).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	// 3. 수신자의 읽지 않은 메시지 수 증가
+	if err := tx.Model(&model.ChatRoom{}).
+		Where("id = ?", roomID).
+		UpdateColumn(unreadCountField, gorm.Expr(unreadCountField+" + ?", 1)).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	// 트랜잭션 커밋
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
 		return nil, err
 	}
 
@@ -321,27 +463,7 @@ func (s *chatService) SendMessageWithFile(roomID, senderID uint, content string,
 		return nil, err
 	}
 
-	// 채팅방의 마지막 메시지 정보 업데이트
-	lastMessageContent := content
-	if messageType == "IMAGE" {
-		lastMessageContent = "📷 이미지"
-	} else if messageType == "FILE" {
-		lastMessageContent = "📎 " + fileName
-	}
-	if err := s.repo.UpdateChatRoomLastMessage(roomID, message.ID, lastMessageContent, message.CreatedAt); err != nil {
-		return nil, err
-	}
-
-	// 수신자의 읽지 않은 메시지 수 증가
-	recipientID := room.User1ID
-	if senderID == room.User1ID {
-		recipientID = room.User2ID
-	}
-	if err := s.repo.IncrementUnreadCount(roomID, recipientID); err != nil {
-		return nil, err
-	}
-
-	// WebSocket으로 실시간 전송
+	// WebSocket으로 실시간 전송 (트랜잭션 외부에서 처리)
 	wsMessage := map[string]interface{}{
 		"type":    "new_message",
 		"message": createdMessage,

@@ -97,7 +97,7 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 		log.Error("Registration failed", err, map[string]interface{}{
 			"email": req.Email,
 		})
-		apperrors.InternalError(c, "회원가입에 실패했습니다")
+		apperrors.ParseAndRespond(c, http.StatusInternalServerError, err, "register user")
 		return
 	}
 
@@ -152,7 +152,7 @@ func (ctrl *AuthController) Login(c *gin.Context) {
 		log.Error("Login failed", err, map[string]interface{}{
 			"email": req.Email,
 		})
-		apperrors.InternalError(c, "로그인에 실패했습니다")
+		apperrors.ParseAndRespond(c, http.StatusInternalServerError, err, "login")
 		return
 	}
 
@@ -201,7 +201,7 @@ func (ctrl *AuthController) GetMe(c *gin.Context) {
 		log.Error("Failed to get user information", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		apperrors.InternalError(c, "사용자 정보를 가져오는데 실패했습니다")
+		apperrors.ParseAndRespond(c, http.StatusInternalServerError, err, "get user")
 		return
 	}
 
@@ -273,7 +273,7 @@ func (ctrl *AuthController) UpdateMe(c *gin.Context) {
 		log.Error("Failed to update user profile", err, map[string]interface{}{
 			"user_id": userID,
 		})
-		apperrors.InternalError(c, "프로필 업데이트에 실패했습니다")
+		apperrors.ParseAndRespond(c, http.StatusInternalServerError, err, "update profile")
 		return
 	}
 

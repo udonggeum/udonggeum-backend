@@ -106,7 +106,7 @@ func main() {
 	tagService := service.NewTagService(dbConn)
 	aiService := service.NewAIService(cfg)
 
-	chatService := service.NewChatService(chatRepo, hub)
+	chatService := service.NewChatService(dbConn, chatRepo, hub)
 
 	// Initialize S3 storage
 	s3Storage := storage.NewS3Storage(

@@ -15,10 +15,10 @@ const (
 
 type User struct {
 	ID           uint           `gorm:"primarykey" json:"id"`                        // 사용자 ID
-	Email        string         `gorm:"uniqueIndex;not null" json:"email"`           // 이메일
+	Email        string         `gorm:"index;not null" json:"email"`           // 이메일 - unique constraint는 DB partial index로 관리
 	PasswordHash string         `gorm:"not null" json:"-"`                           // 비밀번호 해시
 	Name         string         `gorm:"not null" json:"name"`                        // 이름
-	Nickname     string         `gorm:"uniqueIndex;not null" json:"nickname"`        // 닉네임 (자동 생성, 수정 가능)
+	Nickname     string         `gorm:"index;not null" json:"nickname"`        // 닉네임 (자동 생성, 수정 가능) - unique constraint는 DB partial index로 관리
 	Phone        string         `json:"phone"`                                       // 전화번호 (숫자만, 예: 01012345678)
 
 	// 인증 관련 필드

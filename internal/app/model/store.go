@@ -40,12 +40,12 @@ func (s *StringArray) Scan(value interface{}) error {
 
 type Store struct {
 	ID             uint           `gorm:"primarykey" json:"id"`     // 고유 매장 ID
-	BusinessNumber string         `gorm:"uniqueIndex;type:varchar(50)" json:"business_number,omitempty"` // 상가업소번호 (공공데이터 고유ID)
+	BusinessNumber string         `gorm:"type:varchar(50);index" json:"business_number,omitempty"` // 상가업소번호 (공공데이터 고유ID) - unique constraint는 DB partial index로 관리
 	UserID         *uint          `gorm:"index" json:"user_id"`     // 매장 소유자 ID (nullable - 비관리매장은 null)
 	User           User           `gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT" json:"owner,omitempty"`
 	Name           string         `gorm:"not null" json:"name"`                 // 매장명
 	BranchName     string         `gorm:"type:varchar(100)" json:"branch_name,omitempty"` // 지점명
-	Slug           string         `gorm:"uniqueIndex" json:"slug"`              // URL용 고유 식별자 (SEO)
+	Slug           string         `gorm:"index" json:"slug"`              // URL용 고유 식별자 (SEO) - unique constraint는 DB partial index로 관리
 	Region      string         `gorm:"index;not null" json:"region"`         // 시·도
 	District    string         `gorm:"index;not null" json:"district"`       // 구·군
 	Dong        string         `gorm:"type:varchar(100)" json:"dong,omitempty"` // 행정동명

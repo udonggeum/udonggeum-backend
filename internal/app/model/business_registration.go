@@ -15,7 +15,7 @@ type BusinessRegistration struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
 	// 외래 키
-	StoreID uint  `gorm:"not null;uniqueIndex" json:"store_id"` // 매장 ID (1:1 관계)
+	StoreID uint  `gorm:"not null;index" json:"store_id"` // 매장 ID (1:1 관계) - unique constraint는 DB partial index로 관리
 	Store   Store `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
 
 	// 사업자 정보

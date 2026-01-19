@@ -401,7 +401,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 			"user_id": userID,
 			"name":    req.Name,
 		})
-		apperrors.InternalError(c, "매장 등록에 실패했습니다")
+		apperrors.ParseAndRespond(c, http.StatusInternalServerError, err, "create store")
 		return
 	}
 
@@ -421,7 +421,7 @@ func (ctrl *StoreController) CreateStore(c *gin.Context) {
 			})
 		}
 
-		apperrors.InternalError(c, "매장 등록 중 오류가 발생했습니다")
+		apperrors.ParseAndRespond(c, http.StatusInternalServerError, err, "promote user to admin")
 		return
 	}
 
@@ -501,7 +501,7 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 			log.Error("Failed to update store", err, map[string]interface{}{
 				"store_id": storeID,
 			})
-			apperrors.InternalError(c, "매장 수정에 실패했습니다")
+			apperrors.ParseAndRespond(c, http.StatusInternalServerError, err, "update store")
 			return
 		}
 	}
@@ -557,7 +557,7 @@ func (ctrl *StoreController) DeleteStore(c *gin.Context) {
 			log.Error("Failed to delete store", err, map[string]interface{}{
 				"store_id": storeID,
 			})
-			apperrors.InternalError(c, "매장 삭제에 실패했습니다")
+			apperrors.ParseAndRespond(c, http.StatusInternalServerError, err, "delete store")
 			return
 		}
 	}
@@ -981,13 +981,7 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		"status":          verificationResult.BusinessStatus,
 	})
 
-	// 3. 기존 매장 상태 백업 (롤백용)
-	originalUserID := store.UserID
-	originalIsManaged := store.IsManaged
-	originalIsVerified := store.IsVerified
-	originalVerifiedAt := store.VerifiedAt
-
-	// 4. 매장 소유권 부여
+	// 3. 매장 소유권 부여 및 사용자 정보 업데이트 (트랜잭션)
 	now := time.Now()
 	userIDUint := userID
 	store.UserID = &userIDUint
@@ -1007,40 +1001,15 @@ func (ctrl *StoreController) ClaimStore(c *gin.Context) {
 		VerificationDate:   &now,
 	}
 
-	// DB 업데이트
-	updated, err := ctrl.storeService.UpdateStoreOwnership(store)
+	// Store 업데이트 + User 승격을 하나의 트랜잭션으로 처리
+	updated, err := ctrl.storeService.ClaimStoreTransaction(store, userID)
 	if err != nil {
-		log.Error("Failed to claim store", err, map[string]interface{}{
+		log.Error("Failed to claim store in transaction", err, map[string]interface{}{
 			"store_id": storeID,
 			"user_id":  userID,
 		})
-		apperrors.InternalError(c, "매장 소유권 등록에 실패했습니다")
-		return
-	}
-
-	// 5. 사용자를 admin으로 승격 (필수)
-	err = ctrl.storeService.PromoteUserToAdmin(userID)
-	if err != nil {
-		log.Error("Failed to promote user to admin after claim", err, map[string]interface{}{
-			"user_id":  userID,
-			"store_id": storeID,
-		})
-
-		// 권한 승격 실패 시 원래 상태로 롤백
-		store.UserID = originalUserID
-		store.IsManaged = originalIsManaged
-		store.IsVerified = originalIsVerified
-		store.VerifiedAt = originalVerifiedAt
-		store.BusinessRegistration = nil // 사업자 정보 제거
-
-		if _, rollbackErr := ctrl.storeService.UpdateStoreOwnership(store); rollbackErr != nil {
-			log.Error("Failed to rollback store claim", rollbackErr, map[string]interface{}{
-				"user_id":  userID,
-				"store_id": storeID,
-			})
-		}
-
-		apperrors.InternalError(c, "매장 소유권 등록 중 오류가 발생했습니다")
+		// 에러 파싱하여 구체적인 메시지 반환
+		apperrors.ParseAndRespond(c, http.StatusInternalServerError, err, "claim store")
 		return
 	}
 
