@@ -38,6 +38,13 @@ func (s *StringArray) Scan(value interface{}) error {
 	return json.Unmarshal(bytes, s)
 }
 
+// StoreBackground 매장 배경 설정
+type StoreBackground struct {
+	Type    string `json:"type"`              // "preset", "color", "image"
+	BgValue string `json:"value"`             // preset ID, color ID, 또는 이미지 URL
+	Pattern string `json:"pattern,omitempty"` // 패턴 ID (color 타입일 때)
+}
+
 type Store struct {
 	ID             uint           `gorm:"primarykey" json:"id"`     // 고유 매장 ID
 	BusinessNumber string         `gorm:"type:varchar(50);index" json:"business_number,omitempty"` // 상가업소번호 (공공데이터 고유ID) - unique constraint는 DB partial index로 관리
@@ -61,6 +68,9 @@ type Store struct {
 	Description string         `gorm:"type:text" json:"description"`         // 매장 소개
 	OpenTime    string         `gorm:"type:varchar(10)" json:"open_time"`    // 오픈 시간 (예: "09:00")
 	CloseTime   string         `gorm:"type:varchar(10)" json:"close_time"`   // 마감 시간 (예: "20:00")
+
+	// 배경 커스터마이징
+	Background  *StoreBackground `gorm:"type:jsonb;serializer:json" json:"background,omitempty"` // 매장 배경 설정
 
 	// 2단계 검증 시스템
 	IsManaged   bool       `gorm:"default:false;index" json:"is_managed"`    // 관리매장 여부 (소유자가 있는 매장)

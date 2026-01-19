@@ -43,25 +43,26 @@ type StoreRequest struct {
 	TagIDs      []uint   `json:"tag_ids"` // 매장 태그 ID 배열
 
 	// 사업자 인증 정보
-	BusinessNumber        string `json:"business_number" binding:"required"`          // 사업자등록번호 (필수)
-	BusinessStartDate     string `json:"business_start_date" binding:"required"`      // 개업일자 (필수)
-	RepresentativeName    string `json:"representative_name" binding:"required"`      // 대표자명 (필수)
+	BusinessNumber     string `json:"business_number" binding:"required"`     // 사업자등록번호 (필수)
+	BusinessStartDate  string `json:"business_start_date" binding:"required"` // 개업일자 (필수)
+	RepresentativeName string `json:"representative_name" binding:"required"` // 대표자명 (필수)
 }
 
 // UpdateStoreRequest 매장 정보 수정 요청 (사업자 정보는 수정 불가)
 type UpdateStoreRequest struct {
-	Name        *string   `json:"name,omitempty"`
-	Region      *string   `json:"region,omitempty"`
-	District    *string   `json:"district,omitempty"`
-	Address     *string   `json:"address,omitempty"`
-	Latitude    *float64  `json:"latitude,omitempty"`
-	Longitude   *float64  `json:"longitude,omitempty"`
-	PhoneNumber *string   `json:"phone_number,omitempty"`
-	ImageURL    *string   `json:"image_url,omitempty"`
-	Description *string   `json:"description,omitempty"`
-	OpenTime    *string   `json:"open_time,omitempty"`
-	CloseTime   *string   `json:"close_time,omitempty"`
-	TagIDs      []uint    `json:"tag_ids,omitempty"` // 매장 태그 ID 배열
+	Name        *string                `json:"name,omitempty"`
+	Region      *string                `json:"region,omitempty"`
+	District    *string                `json:"district,omitempty"`
+	Address     *string                `json:"address,omitempty"`
+	Latitude    *float64               `json:"latitude,omitempty"`
+	Longitude   *float64               `json:"longitude,omitempty"`
+	PhoneNumber *string                `json:"phone_number,omitempty"`
+	ImageURL    *string                `json:"image_url,omitempty"`
+	Description *string                `json:"description,omitempty"`
+	OpenTime    *string                `json:"open_time,omitempty"`
+	CloseTime   *string                `json:"close_time,omitempty"`
+	TagIDs      []uint                 `json:"tag_ids,omitempty"`    // 매장 태그 ID 배열
+	Background  *model.StoreBackground `json:"background,omitempty"` // 매장 배경 설정
 }
 
 func (ctrl *StoreController) ListStores(c *gin.Context) {
@@ -144,33 +145,33 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 			storesWithLikes := make([]map[string]interface{}, len(result.Stores))
 			for i, store := range result.Stores {
 				storeMap := map[string]interface{}{
-					"id":               store.ID,
-					"user_id":          store.UserID,
-					"name":             store.Name,
-					"branch_name":      store.BranchName,
-					"slug":             store.Slug,
-					"region":           store.Region,
-					"district":         store.District,
-					"dong":             store.Dong,
-					"address":          store.Address,
-					"building_name":    store.BuildingName,
-					"floor":            store.Floor,
-					"unit":             store.Unit,
-					"postal_code":      store.PostalCode,
-					"latitude":         store.Latitude,
-					"longitude":        store.Longitude,
-					"phone_number":     store.PhoneNumber,
-					"image_url":        store.ImageURL,
-					"description":      store.Description,
-					"open_time":        store.OpenTime,
-					"close_time":       store.CloseTime,
-					"tags":             store.Tags,
-					"is_managed":       store.IsManaged,
-					"is_verified":      store.IsVerified,
-					"verified_at":      store.VerifiedAt,
-					"created_at":       store.CreatedAt,
-					"updated_at":       store.UpdatedAt,
-					"is_liked":         likedMap[store.ID],
+					"id":            store.ID,
+					"user_id":       store.UserID,
+					"name":          store.Name,
+					"branch_name":   store.BranchName,
+					"slug":          store.Slug,
+					"region":        store.Region,
+					"district":      store.District,
+					"dong":          store.Dong,
+					"address":       store.Address,
+					"building_name": store.BuildingName,
+					"floor":         store.Floor,
+					"unit":          store.Unit,
+					"postal_code":   store.PostalCode,
+					"latitude":      store.Latitude,
+					"longitude":     store.Longitude,
+					"phone_number":  store.PhoneNumber,
+					"image_url":     store.ImageURL,
+					"description":   store.Description,
+					"open_time":     store.OpenTime,
+					"close_time":    store.CloseTime,
+					"tags":          store.Tags,
+					"is_managed":    store.IsManaged,
+					"is_verified":   store.IsVerified,
+					"verified_at":   store.VerifiedAt,
+					"created_at":    store.CreatedAt,
+					"updated_at":    store.UpdatedAt,
+					"is_liked":      likedMap[store.ID],
 				}
 				storesWithLikes[i] = storeMap
 			}
@@ -476,6 +477,7 @@ func (ctrl *StoreController) UpdateStore(c *gin.Context) {
 		OpenTime:    req.OpenTime,
 		CloseTime:   req.CloseTime,
 		TagIDs:      req.TagIDs,
+		Background:  req.Background,
 	})
 	if err != nil {
 		switch err {
@@ -774,6 +776,7 @@ func (ctrl *StoreController) UpdateMyStore(c *gin.Context) {
 		OpenTime:    req.OpenTime,
 		CloseTime:   req.CloseTime,
 		TagIDs:      req.TagIDs,
+		Background:  req.Background,
 	})
 	if err != nil {
 		switch err {
@@ -812,9 +815,9 @@ func (ctrl *StoreController) UpdateMyStore(c *gin.Context) {
 
 // ClaimStoreRequest 매장 소유권 신청 요청
 type ClaimStoreRequest struct {
-	BusinessNumber     string `json:"business_number" binding:"required"`      // 사업자등록번호 (필수)
-	BusinessStartDate  string `json:"business_start_date" binding:"required"`  // 개업일자 (필수)
-	RepresentativeName string `json:"representative_name" binding:"required"`  // 대표자명 (필수)
+	BusinessNumber     string `json:"business_number" binding:"required"`     // 사업자등록번호 (필수)
+	BusinessStartDate  string `json:"business_start_date" binding:"required"` // 개업일자 (필수)
+	RepresentativeName string `json:"representative_name" binding:"required"` // 대표자명 (필수)
 }
 
 // ClaimStore 기존 매장에 대한 소유권 신청 (1단계 검증)

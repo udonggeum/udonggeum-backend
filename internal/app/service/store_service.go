@@ -78,7 +78,8 @@ type StoreMutation struct {
 	Description *string
 	OpenTime    *string
 	CloseTime   *string
-	TagIDs      []uint // 태그 ID 배열
+	TagIDs      []uint                 // 태그 ID 배열
+	Background  *model.StoreBackground // 배경 설정
 }
 
 func NewStoreService(db *gorm.DB, storeRepo repository.StoreRepository, userRepo repository.UserRepository) StoreService {
@@ -378,6 +379,11 @@ func (s *storeService) UpdateStore(userID uint, storeID uint, input StoreMutatio
 	}
 	if input.CloseTime != nil {
 		existing.CloseTime = *input.CloseTime
+	}
+
+	// 배경 설정 업데이트
+	if input.Background != nil {
+		existing.Background = input.Background
 	}
 
 	// 태그 업데이트 (Many-to-Many 관계)
