@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	ErrStoreNotFound     = errors.New("매장을 찾을 수 없습니다")
-	ErrStoreAccessDenied = errors.New("매장 접근 권한이 없습니다")
+	ErrStoreNotFound       = errors.New("매장을 찾을 수 없습니다")
+	ErrStoreAccessDenied   = errors.New("매장 접근 권한이 없습니다")
+	ErrStoreAlreadyManaged = errors.New("이미 등록된 매장입니다")
 )
 
 type StoreListOptions struct {
@@ -58,6 +59,10 @@ type StoreService interface {
 	ListVerificationsByStatus(status string) ([]*model.StoreVerification, error)
 	ApproveStoreVerification(storeID uint, verifiedAt *time.Time) error
 	UpdateVerification(verification *model.StoreVerification) error
+	// 매장등록 요청 관련
+	RequestStoreRegistration(storeID, userID uint) (int64, bool, error)
+	GetStoreRegistrationRequestCount(storeID uint) (int64, error)
+	HasUserRequestedRegistration(storeID, userID uint) (bool, error)
 }
 
 type storeService struct {
@@ -977,4 +982,83 @@ func (s *storeService) UpdateVerification(verification *model.StoreVerification)
 	})
 
 	return nil
+}
+
+// RequestStoreRegistration 매장등록 요청 (유저별 1회 제한)
+func (s *storeService) RequestStoreRegistration(storeID, userID uint) (int64, bool, error) {
+	logger.Info("Requesting store registration", map[string]interface{}{
+		"store_id": storeID,
+		"user_id":  userID,
+	})
+
+	// 매장 존재 확인
+	store, err := s.storeRepo.FindByID(storeID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, false, ErrStoreNotFound
+		}
+		return 0, false, err
+	}
+
+	// 이미 관리되는 매장인지 확인
+	if store.IsManaged {
+		return 0, false, ErrStoreAlreadyManaged
+	}
+
+	// 이미 요청했는지 확인
+	var existingRequest model.StoreRegistrationRequest
+	err = s.db.Where("store_id = ? AND user_id = ?", storeID, userID).First(&existingRequest).Error
+	if err == nil {
+		// 이미 요청함 - 총 요청 수만 반환
+		var count int64
+		s.db.Model(&model.StoreRegistrationRequest{}).Where("store_id = ?", storeID).Count(&count)
+		return count, true, nil
+	}
+
+	// 새 요청 생성
+	request := model.StoreRegistrationRequest{
+		StoreID: storeID,
+		UserID:  userID,
+	}
+
+	if err := s.db.Create(&request).Error; err != nil {
+		logger.Error("Failed to create registration request", err, map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  userID,
+		})
+		return 0, false, err
+	}
+
+	// 총 요청 수 조회
+	var count int64
+	s.db.Model(&model.StoreRegistrationRequest{}).Where("store_id = ?", storeID).Count(&count)
+
+	logger.Info("Store registration request created", map[string]interface{}{
+		"store_id":      storeID,
+		"user_id":       userID,
+		"request_count": count,
+	})
+
+	return count, true, nil
+}
+
+// GetStoreRegistrationRequestCount 매장등록 요청 수 조회
+func (s *storeService) GetStoreRegistrationRequestCount(storeID uint) (int64, error) {
+	var count int64
+	if err := s.db.Model(&model.StoreRegistrationRequest{}).Where("store_id = ?", storeID).Count(&count).Error; err != nil {
+		logger.Error("Failed to get registration request count", err, map[string]interface{}{
+			"store_id": storeID,
+		})
+		return 0, err
+	}
+	return count, nil
+}
+
+// HasUserRequestedRegistration 사용자가 매장등록 요청했는지 확인
+func (s *storeService) HasUserRequestedRegistration(storeID, userID uint) (bool, error) {
+	var count int64
+	if err := s.db.Model(&model.StoreRegistrationRequest{}).Where("store_id = ? AND user_id = ?", storeID, userID).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }

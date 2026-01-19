@@ -683,6 +683,105 @@ func (ctrl *StoreController) GetUserLikedStores(c *gin.Context) {
 	})
 }
 
+// RequestStoreRegistration 매장등록 요청 (미등록 매장에 대한 사용자 요청)
+func (ctrl *StoreController) RequestStoreRegistration(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		log.Warn("User ID not found in context for registration request", nil)
+		apperrors.Unauthorized(c, "로그인이 필요합니다")
+		return
+	}
+
+	// 매장 ID 파싱
+	idStr := c.Param("id")
+	storeID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		log.Warn("Invalid store ID for registration request", map[string]interface{}{
+			"store_id": idStr,
+			"error":    err.Error(),
+		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 매장 ID입니다")
+		return
+	}
+
+	// 매장등록 요청
+	requestCount, hasRequested, err := ctrl.storeService.RequestStoreRegistration(uint(storeID), userID)
+	if err != nil {
+		if err == service.ErrStoreNotFound {
+			log.Warn("Store not found for registration request", map[string]interface{}{
+				"store_id": storeID,
+			})
+			apperrors.NotFound(c, apperrors.StoreNotFound, "매장을 찾을 수 없습니다")
+			return
+		}
+		if err == service.ErrStoreAlreadyManaged {
+			log.Warn("Store already managed", map[string]interface{}{
+				"store_id": storeID,
+			})
+			apperrors.BadRequest(c, apperrors.StoreAlreadyManaged, "이미 등록된 매장입니다")
+			return
+		}
+		log.Error("Failed to request store registration", err, map[string]interface{}{
+			"store_id": storeID,
+			"user_id":  userID,
+		})
+		apperrors.InternalError(c, "매장등록 요청에 실패했습니다")
+		return
+	}
+
+	log.Info("Store registration requested", map[string]interface{}{
+		"store_id":      storeID,
+		"user_id":       userID,
+		"request_count": requestCount,
+		"has_requested": hasRequested,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "매장등록 요청이 접수되었습니다",
+		"request_count": requestCount,
+		"has_requested": hasRequested,
+	})
+}
+
+// GetStoreRegistrationStatus 매장등록 요청 상태 조회
+func (ctrl *StoreController) GetStoreRegistrationStatus(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	// 매장 ID 파싱
+	idStr := c.Param("id")
+	storeID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		log.Warn("Invalid store ID for registration status", map[string]interface{}{
+			"store_id": idStr,
+		})
+		apperrors.BadRequest(c, apperrors.ValidationInvalidID, "잘못된 매장 ID입니다")
+		return
+	}
+
+	// 요청 수 조회
+	requestCount, err := ctrl.storeService.GetStoreRegistrationRequestCount(uint(storeID))
+	if err != nil {
+		log.Error("Failed to get registration request count", err, map[string]interface{}{
+			"store_id": storeID,
+		})
+		apperrors.InternalError(c, "요청 수 조회에 실패했습니다")
+		return
+	}
+
+	// 사용자가 로그인한 경우 본인 요청 여부 확인
+	hasRequested := false
+	if userID, exists := middleware.GetUserID(c); exists {
+		hasRequested, _ = ctrl.storeService.HasUserRequestedRegistration(uint(storeID), userID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"request_count": requestCount,
+		"has_requested": hasRequested,
+	})
+}
+
 // GetMyStore admin 사용자의 매장 정보 조회
 func (ctrl *StoreController) GetMyStore(c *gin.Context) {
 	log := middleware.GetLoggerFromContext(c)

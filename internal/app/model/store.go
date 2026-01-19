@@ -111,6 +111,22 @@ func (StoreLike) TableName() string {
 	return "store_likes"
 }
 
+// StoreRegistrationRequest 매장등록 요청 모델 (미등록 매장에 대한 사용자 요청)
+type StoreRegistrationRequest struct {
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	StoreID uint `gorm:"not null;index:idx_store_user_request,unique" json:"store_id"` // 매장 ID
+	UserID  uint `gorm:"not null;index:idx_store_user_request,unique" json:"user_id"`  // 요청한 사용자 ID
+
+	Store Store `gorm:"foreignKey:StoreID" json:"-"`
+	User  User  `gorm:"foreignKey:UserID" json:"-"`
+}
+
+func (StoreRegistrationRequest) TableName() string {
+	return "store_registration_requests"
+}
+
 // generateSlug는 매장명과 지역 정보로 URL용 slug를 생성합니다
 func generateSlug(region, district, name string) string {
 	// 공백을 하이픈으로 변경

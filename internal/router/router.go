@@ -124,6 +124,16 @@ func (r *Router) Setup() *gin.Engine {
 				r.storeController.ToggleStoreLike,
 			)
 
+			// Store registration request (매장등록 요청)
+			stores.GET("/:id/registration-request",
+				r.authMiddleware.OptionalAuthenticate(),
+				r.storeController.GetStoreRegistrationStatus,
+			)
+			stores.POST("/:id/registration-request",
+				r.authMiddleware.Authenticate(),
+				r.storeController.RequestStoreRegistration,
+			)
+
 			// Store reviews
 			stores.POST("/:id/reviews",
 				r.authMiddleware.Authenticate(),
