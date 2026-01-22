@@ -39,18 +39,23 @@ type GoldPriceService interface {
 	UpdatePricesFromExternalAPI() error
 	CreatePrice(goldPrice *model.GoldPrice) error
 	UpdatePrice(goldPrice *model.GoldPrice) error
+	ImportHistoricalDataFromKRX(startDate, endDate string) (int, error)
 }
 
 type goldPriceService struct {
 	repo        repository.GoldPriceRepository
 	externalAPI ExternalGoldPriceAPI
+	krxAPIURL   string
+	krxAPIKey   string
 }
 
 // NewGoldPriceService 금 시세 서비스 생성
-func NewGoldPriceService(repo repository.GoldPriceRepository, externalAPI ExternalGoldPriceAPI) GoldPriceService {
+func NewGoldPriceService(repo repository.GoldPriceRepository, externalAPI ExternalGoldPriceAPI, krxAPIURL, krxAPIKey string) GoldPriceService {
 	return &goldPriceService{
 		repo:        repo,
 		externalAPI: externalAPI,
+		krxAPIURL:   krxAPIURL,
+		krxAPIKey:   krxAPIKey,
 	}
 }
 
@@ -348,4 +353,262 @@ func (api *DefaultGoldPriceAPI) FetchGoldPrices() (map[model.GoldPriceType]GoldP
 	})
 
 	return prices, nil
+}
+
+// KRXAPIResponse KRX API 응답 구조체
+type KRXAPIResponse struct {
+	Response struct {
+		Header struct {
+			ResultCode string `json:"resultCode"`
+			ResultMsg  string `json:"resultMsg"`
+		} `json:"header"`
+		Body struct {
+			NumOfRows  int    `json:"numOfRows"`
+			PageNo     int    `json:"pageNo"`
+			TotalCount int    `json:"totalCount"`
+			Items      struct {
+				Item []KRXGoldPriceItem `json:"item"`
+			} `json:"items"`
+		} `json:"body"`
+	} `json:"response"`
+}
+
+// KRXGoldPriceItem KRX 금 시세 아이템
+type KRXGoldPriceItem struct {
+	BasDt   string  `json:"basDt"`   // 기준일자 (YYYYMMDD)
+	SrtnCd  string  `json:"srtnCd"`  // 단축코드
+	IsinCd  string  `json:"isinCd"`  // ISIN코드
+	ItmsNm  string  `json:"itmsNm"`  // 종목명
+	Clpr    string  `json:"clpr"`    // 종가
+	Vs      string  `json:"vs"`      // 대비
+	FltRt   string  `json:"fltRt"`   // 등락률
+	Mkp     string  `json:"mkp"`     // 시가
+	Hipr    string  `json:"hipr"`    // 고가
+	Lopr    string  `json:"lopr"`    // 저가
+	Trqu    string  `json:"trqu"`    // 거래량
+	TrPrc   string  `json:"trPrc"`   // 거래대금
+}
+
+// ImportHistoricalDataFromKRX KRX API에서 과거 데이터 가져오기
+func (s *goldPriceService) ImportHistoricalDataFromKRX(startDate, endDate string) (int, error) {
+	if s.krxAPIURL == "" || s.krxAPIKey == "" {
+		return 0, errors.New("KRX API URL 또는 API Key가 설정되지 않았습니다")
+	}
+
+	logger.Info("Starting KRX historical data import", map[string]interface{}{
+		"start_date": startDate,
+		"end_date":   endDate,
+	})
+
+	importedCount := 0
+	pageNo := 1
+	numOfRows := 100
+
+	for {
+		// API 호출
+		client := &http.Client{
+			Timeout: 30 * time.Second,
+		}
+
+		req, err := http.NewRequest("GET", s.krxAPIURL, nil)
+		if err != nil {
+			return importedCount, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		// 쿼리 파라미터 설정
+		q := req.URL.Query()
+		q.Add("serviceKey", s.krxAPIKey)
+		q.Add("pageNo", fmt.Sprintf("%d", pageNo))
+		q.Add("numOfRows", fmt.Sprintf("%d", numOfRows))
+		q.Add("resultType", "json")
+		q.Add("beginBasDt", startDate) // YYYYMMDD 형식
+		q.Add("endBasDt", endDate)     // YYYYMMDD 형식
+		req.URL.RawQuery = q.Encode()
+
+		logger.Info("Fetching KRX data", map[string]interface{}{
+			"page":  pageNo,
+			"url":   req.URL.String(),
+		})
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return importedCount, fmt.Errorf("failed to call KRX API: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return importedCount, fmt.Errorf("KRX API returned status %d: %s", resp.StatusCode, string(body))
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return importedCount, fmt.Errorf("failed to read response body: %w", err)
+		}
+
+		// 응답 파싱
+		var apiResponse KRXAPIResponse
+		if err := json.Unmarshal(body, &apiResponse); err != nil {
+			return importedCount, fmt.Errorf("failed to parse KRX API response: %w", err)
+		}
+
+		// 에러 체크
+		if apiResponse.Response.Header.ResultCode != "00" {
+			return importedCount, fmt.Errorf("KRX API error: %s - %s",
+				apiResponse.Response.Header.ResultCode,
+				apiResponse.Response.Header.ResultMsg)
+		}
+
+		// 데이터가 없으면 종료
+		if len(apiResponse.Response.Body.Items.Item) == 0 {
+			logger.Info("No more data to import from KRX", map[string]interface{}{
+				"page":           pageNo,
+				"imported_count": importedCount,
+			})
+			break
+		}
+
+		// 데이터 저장
+		for _, item := range apiResponse.Response.Body.Items.Item {
+			// 24K (순금) 데이터만 처리
+			goldPrice24K, err := s.convertKRXItemToGoldPrice(item)
+			if err != nil {
+				logger.Warn("Failed to convert KRX item", map[string]interface{}{
+					"item":  item.ItmsNm,
+					"error": err.Error(),
+				})
+				continue
+			}
+
+			if goldPrice24K == nil {
+				continue // 순금이 아닌 경우 스킵
+			}
+
+			// 날짜 파싱
+			sourceDate, _ := time.Parse("20060102", item.BasDt)
+
+			// 24K, 18K, 14K 데이터 생성
+			goldPrices := []*model.GoldPrice{
+				goldPrice24K, // 24K (순금)
+				{
+					Type:        model.Gold18K,
+					BuyPrice:    goldPrice24K.BuyPrice * 0.75,  // 18K = 24K × (18/24)
+					SellPrice:   goldPrice24K.SellPrice * 0.75,
+					Source:      "KRX",
+					SourceDate:  sourceDate,
+					Description: fmt.Sprintf("KRX 금시장 시세 기반 계산 (18K) - %s", item.ItmsNm),
+				},
+				{
+					Type:        model.Gold14K,
+					BuyPrice:    goldPrice24K.BuyPrice * (14.0 / 24.0),  // 14K = 24K × (14/24)
+					SellPrice:   goldPrice24K.SellPrice * (14.0 / 24.0),
+					Source:      "KRX",
+					SourceDate:  sourceDate,
+					Description: fmt.Sprintf("KRX 금시장 시세 기반 계산 (14K) - %s", item.ItmsNm),
+				},
+			}
+
+			// 각 금 종류별로 저장
+			for _, gp := range goldPrices {
+				// 중복 체크 (같은 날짜, 같은 타입의 데이터가 이미 있는지)
+				existing, err := s.repo.FindByTypeAndDate(gp.Type, sourceDate)
+				if err != nil {
+					logger.Error("Failed to check existing data", err)
+					continue
+				}
+
+				if existing != nil {
+					logger.Info("Skipping duplicate data", map[string]interface{}{
+						"type": gp.Type,
+						"date": item.BasDt,
+					})
+					continue
+				}
+
+				// 데이터 저장
+				if err := s.repo.Create(gp); err != nil {
+					logger.Error("Failed to save KRX gold price", err, map[string]interface{}{
+						"type": gp.Type,
+						"date": item.BasDt,
+					})
+					continue
+				}
+
+				importedCount++
+			}
+		}
+
+		logger.Info("Imported KRX data page", map[string]interface{}{
+			"page":           pageNo,
+			"items":          len(apiResponse.Response.Body.Items.Item),
+			"imported_count": importedCount,
+			"total_count":    apiResponse.Response.Body.TotalCount,
+		})
+
+		// 모든 데이터를 가져왔으면 종료
+		if pageNo * numOfRows >= apiResponse.Response.Body.TotalCount {
+			break
+		}
+
+		pageNo++
+		time.Sleep(100 * time.Millisecond) // API 호출 제한 방지
+	}
+
+	logger.Info("Completed KRX historical data import", map[string]interface{}{
+		"imported_count": importedCount,
+		"start_date":     startDate,
+		"end_date":       endDate,
+	})
+
+	return importedCount, nil
+}
+
+// convertKRXItemToGoldPrice KRX 아이템을 GoldPrice로 변환 (24K 순금만)
+func (s *goldPriceService) convertKRXItemToGoldPrice(item KRXGoldPriceItem) (*model.GoldPrice, error) {
+	// 종목명 분석 - 순금(99.99%, 24K)만 처리
+	if !contains(item.ItmsNm, "99.99") && !contains(item.ItmsNm, "순금") && !contains(item.ItmsNm, "24K") {
+		return nil, nil // 순금이 아닌 경우 스킵
+	}
+
+	// 종가를 float64로 변환
+	var clpr float64
+	if _, err := fmt.Sscanf(item.Clpr, "%f", &clpr); err != nil {
+		return nil, fmt.Errorf("failed to parse price: %w", err)
+	}
+
+	// KRX는 종가만 제공하므로, 매입가/매도가를 종가 기준으로 설정
+	// 일반적으로 매입가는 시세보다 낮고, 매도가는 높음
+	buyPrice := clpr * 0.98  // 종가의 98%를 매입가로
+	sellPrice := clpr * 1.02 // 종가의 102%를 매도가로
+
+	// 날짜 파싱 (YYYYMMDD -> time.Time)
+	sourceDate, err := time.Parse("20060102", item.BasDt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	goldPrice := &model.GoldPrice{
+		Type:        model.Gold24K,
+		BuyPrice:    buyPrice,
+		SellPrice:   sellPrice,
+		Source:      "KRX",
+		SourceDate:  sourceDate,
+		Description: fmt.Sprintf("KRX 금시장 시세 (순금 99.99%%) - %s", item.ItmsNm),
+	}
+
+	return goldPrice, nil
+}
+
+// contains 문자열 포함 여부 체크
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && indexOf(s, substr) >= 0
+}
+
+func indexOf(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
 }

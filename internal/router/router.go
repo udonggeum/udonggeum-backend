@@ -246,6 +246,11 @@ func (r *Router) Setup() *gin.Engine {
 				r.authMiddleware.RequireRole("admin"),
 				r.goldPriceController.UpdateFromExternalAPI,
 			)
+			goldPrices.POST("/import",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("admin"),
+				r.goldPriceController.ImportHistoricalData,
+			)
 		}
 
 		// Upload routes

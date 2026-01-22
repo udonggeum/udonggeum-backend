@@ -76,8 +76,10 @@ type S3Config struct {
 }
 
 type GoldPriceConfig struct {
-	APIURL string
-	APIKey string
+	APIURL    string
+	APIKey    string
+	KRXAPIURL string // KRX 금시세 API URL
+	KRXAPIKey string // KRX 금시세 API Key
 }
 
 type KakaoConfig struct {
@@ -143,8 +145,10 @@ func Load() (*Config, error) {
 			BaseURL:         getEnv("AWS_S3_BASE_URL", ""),
 		},
 		GoldPrice: GoldPriceConfig{
-			APIURL: getEnv("GOLD_PRICE_API_URL", ""),
-			APIKey: getEnv("GOLD_PRICE_API_KEY", ""),
+			APIURL:    getEnv("GOLD_PRICE_API_URL", ""),
+			APIKey:    getEnv("GOLD_PRICE_API_KEY", ""),
+			KRXAPIURL: getEnv("KRX_GOLD_PRICE_API_URL", "https://apis.data.go.kr/1160100/service/GetGeneralProductInfoService/getGoldPriceInfo"),
+			KRXAPIKey: getEnv("KRX_GOLD_PRICE_API_KEY", ""),
 		},
 		Kakao: KakaoConfig{
 			ClientID:     getEnv("KAKAO_CLIENT_ID", ""),

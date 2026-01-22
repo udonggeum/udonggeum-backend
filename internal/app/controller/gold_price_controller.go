@@ -261,6 +261,56 @@ func (ctrl *GoldPriceController) UpdatePrice(c *gin.Context) {
 	})
 }
 
+// ImportHistoricalDataRequest KRX 과거 데이터 임포트 요청
+type ImportHistoricalDataRequest struct {
+	StartDate string `json:"start_date" binding:"required"` // YYYYMMDD 형식
+	EndDate   string `json:"end_date" binding:"required"`   // YYYYMMDD 형식
+}
+
+// ImportHistoricalData KRX API에서 과거 데이터 가져오기 (관리자 전용)
+// @Summary KRX 과거 금 시세 데이터 임포트
+// @Description KRX API를 통해 과거 금 시세 데이터를 가져와서 저장합니다 (관리자 전용)
+// @Tags gold-price
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ImportHistoricalDataRequest true "임포트 요청"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/gold-prices/import [post]
+func (ctrl *GoldPriceController) ImportHistoricalData(c *gin.Context) {
+	var req ImportHistoricalDataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "잘못된 요청입니다")
+		return
+	}
+
+	// 날짜 형식 검증 (YYYYMMDD)
+	if len(req.StartDate) != 8 || len(req.EndDate) != 8 {
+		apperrors.BadRequest(c, apperrors.ValidationInvalidInput, "날짜 형식은 YYYYMMDD여야 합니다")
+		return
+	}
+
+	count, err := ctrl.goldPriceService.ImportHistoricalDataFromKRX(req.StartDate, req.EndDate)
+	if err != nil {
+		apperrors.RespondWithError(c, http.StatusInternalServerError, apperrors.InternalExternalAPI,
+			"KRX API에서 과거 데이터를 가져오는데 실패했습니다: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "KRX 과거 데이터를 성공적으로 가져왔습니다",
+		"data": gin.H{
+			"imported_count": count,
+			"start_date":     req.StartDate,
+			"end_date":       req.EndDate,
+		},
+	})
+}
+
 // isValidGoldPriceType 유효한 금 시세 유형인지 확인
 func isValidGoldPriceType(priceType model.GoldPriceType) bool {
 	switch priceType {

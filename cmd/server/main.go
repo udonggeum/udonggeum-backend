@@ -94,7 +94,7 @@ func main() {
 	storeService := service.NewStoreService(dbConn, storeRepo, userRepo)
 
 	goldPriceAPI := service.NewDefaultGoldPriceAPI(cfg.GoldPrice.APIURL, cfg.GoldPrice.APIKey)
-	goldPriceService := service.NewGoldPriceService(goldPriceRepo, goldPriceAPI)
+	goldPriceService := service.NewGoldPriceService(goldPriceRepo, goldPriceAPI, cfg.GoldPrice.KRXAPIURL, cfg.GoldPrice.KRXAPIKey)
 
 	// Initialize WebSocket hub (알림 서비스보다 먼저 생성)
 	hub := websocket.NewHub()
