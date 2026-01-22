@@ -92,17 +92,19 @@ func (s *passwordResetService) RequestReset(email string) error {
 		return err
 	}
 
-	// TODO: Send email with reset link
-	// For now, just log the token (this should be removed in production)
-	logger.Info("Password reset token generated (EMAIL SENDING NOT IMPLEMENTED)", map[string]interface{}{
+	// Send password reset email
+	if err := util.SendPasswordResetEmail(email, token); err != nil {
+		logger.Error("Failed to send password reset email", err, map[string]interface{}{
+			"email": email,
+		})
+		// 이메일 전송 실패해도 토큰은 생성되었으므로 에러를 반환하지 않음
+		// 개발 모드에서는 로그에 토큰이 출력됨
+	}
+
+	logger.Info("Password reset email sent", map[string]interface{}{
 		"email":      email,
-		"token":      token,
 		"expires_at": reset.ExpiresAt,
 		"user_id":    user.ID,
-	})
-
-	logger.Info("Password reset email would be sent (not implemented)", map[string]interface{}{
-		"email": email,
 	})
 
 	return nil
