@@ -8,6 +8,7 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
 	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
+	"github.com/ikkim/udonggeum-backend/pkg/logger"
 )
 
 // GoldPriceController 금 시세 컨트롤러
@@ -84,6 +85,11 @@ func (ctrl *GoldPriceController) GetPriceByType(c *gin.Context) {
 
 	price, err := ctrl.goldPriceService.GetPriceByType(priceType)
 	if err != nil {
+		logger.Warn("Failed to get gold price", map[string]interface{}{
+			"price_type": priceType,
+			"error":      err.Error(),
+		})
+
 		if err == service.ErrGoldPriceNotFound {
 			apperrors.NotFound(c, apperrors.GoldPriceNotFound, "금 시세 정보를 찾을 수 없습니다")
 			return

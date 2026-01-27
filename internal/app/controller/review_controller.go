@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
 	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
+	"github.com/ikkim/udonggeum-backend/pkg/logger"
 )
 
 type ReviewController struct {
@@ -50,6 +51,11 @@ func (ctrl *ReviewController) CreateReview(c *gin.Context) {
 
 	review, err := ctrl.reviewService.CreateReview(userID.(uint), input)
 	if err != nil {
+		logger.Warn("Failed to create review", map[string]interface{}{
+			"user_id": userID.(uint),
+			"error":   err.Error(),
+		})
+
 		apperrors.BadRequest(c, apperrors.InternalServerError, "리뷰 작성에 실패했습니다")
 		return
 	}
@@ -82,6 +88,12 @@ func (ctrl *ReviewController) GetStoreReviews(c *gin.Context) {
 
 	reviews, total, err := ctrl.reviewService.GetStoreReviews(uint(storeID), page, pageSize, sortBy, sortOrder)
 	if err != nil {
+		logger.Warn("Failed to get store reviews", map[string]interface{}{
+			"store_id": uint(storeID),
+			"page":     page,
+			"error":    err.Error(),
+		})
+
 		apperrors.InternalError(c, "매장 리뷰 조회에 실패했습니다")
 		return
 	}
@@ -115,6 +127,12 @@ func (ctrl *ReviewController) GetUserReviews(c *gin.Context) {
 
 	reviews, total, err := ctrl.reviewService.GetUserReviews(userID.(uint), page, pageSize)
 	if err != nil {
+		logger.Warn("Failed to get user reviews", map[string]interface{}{
+			"user_id": userID.(uint),
+			"page":    page,
+			"error":   err.Error(),
+		})
+
 		apperrors.InternalError(c, "사용자 리뷰 조회에 실패했습니다")
 		return
 	}
@@ -164,6 +182,12 @@ func (ctrl *ReviewController) UpdateReview(c *gin.Context) {
 
 	review, err := ctrl.reviewService.UpdateReview(uint(reviewID), userID.(uint), input)
 	if err != nil {
+		logger.Warn("Failed to update review", map[string]interface{}{
+			"review_id": uint(reviewID),
+			"user_id":   userID.(uint),
+			"error":     err.Error(),
+		})
+
 		apperrors.InternalError(c, "리뷰 수정에 실패했습니다")
 		return
 	}
@@ -196,6 +220,13 @@ func (ctrl *ReviewController) DeleteReview(c *gin.Context) {
 	}
 
 	if err := ctrl.reviewService.DeleteReview(uint(reviewID), userID.(uint), isAdmin); err != nil {
+		logger.Warn("Failed to delete review", map[string]interface{}{
+			"review_id": uint(reviewID),
+			"user_id":   userID.(uint),
+			"is_admin":  isAdmin,
+			"error":     err.Error(),
+		})
+
 		apperrors.InternalError(c, "리뷰 삭제에 실패했습니다")
 		return
 	}
@@ -225,6 +256,12 @@ func (ctrl *ReviewController) ToggleReviewLike(c *gin.Context) {
 
 	isLiked, err := ctrl.reviewService.ToggleReviewLike(uint(reviewID), userID.(uint))
 	if err != nil {
+		logger.Warn("Failed to toggle review like", map[string]interface{}{
+			"review_id": uint(reviewID),
+			"user_id":   userID.(uint),
+			"error":     err.Error(),
+		})
+
 		apperrors.InternalError(c, "좋아요 처리에 실패했습니다")
 		return
 	}
@@ -248,6 +285,11 @@ func (ctrl *ReviewController) GetStoreStatistics(c *gin.Context) {
 
 	stats, err := ctrl.reviewService.GetStoreStatistics(uint(storeID))
 	if err != nil {
+		logger.Warn("Failed to get store statistics", map[string]interface{}{
+			"store_id": uint(storeID),
+			"error":    err.Error(),
+		})
+
 		apperrors.InternalError(c, "매장 통계 조회에 실패했습니다")
 		return
 	}
@@ -276,6 +318,12 @@ func (ctrl *ReviewController) GetStoreGallery(c *gin.Context) {
 
 	gallery, total, err := ctrl.reviewService.GetStoreGallery(uint(storeID), page, pageSize)
 	if err != nil {
+		logger.Warn("Failed to get store gallery", map[string]interface{}{
+			"store_id": uint(storeID),
+			"page":     page,
+			"error":    err.Error(),
+		})
+
 		apperrors.InternalError(c, "매장 갤러리 조회에 실패했습니다")
 		return
 	}

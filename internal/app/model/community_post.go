@@ -256,13 +256,18 @@ func (p *CommunityPost) BeforeCreate(tx *gorm.DB) error {
 
 // BeforeUpdate는 게시글 수정 시 제목이 변경되면 slug를 재생성합니다
 func (p *CommunityPost) BeforeUpdate(tx *gorm.DB) error {
-	// 기존 게시글 정보 조회
+	// Title 필드가 변경되었는지 확인 (성능 최적화)
+	if !tx.Statement.Changed("Title") {
+		return nil
+	}
+
+	// 기존 게시글 정보 조회 (Title이 변경되었을 때만)
 	var oldPost CommunityPost
 	if err := tx.First(&oldPost, p.ID).Error; err != nil {
 		return err
 	}
 
-	// 제목이 변경되었는지 확인
+	// 제목이 실제로 변경되었는지 확인
 	if p.Title != oldPost.Title {
 		baseSlug := generatePostSlug(p.Title)
 		slug := baseSlug

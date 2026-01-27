@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ikkim/udonggeum-backend/pkg/logger"
 )
 
 // ErrorResponse 표준 에러 응답 구조
@@ -17,6 +18,16 @@ type ErrorResponse struct {
 // errorCode: 에러 코드 상수 (codes.go 참조)
 // message: 사용자에게 보여질 한글 메시지
 func RespondWithError(c *gin.Context, statusCode int, errorCode string, message string) {
+	// 에러 로깅
+	logger.Warn("API error response", map[string]interface{}{
+		"status_code": statusCode,
+		"error_code":  errorCode,
+		"message":     message,
+		"method":      c.Request.Method,
+		"path":        c.Request.URL.Path,
+		"client_ip":   c.ClientIP(),
+	})
+
 	c.JSON(statusCode, ErrorResponse{
 		Error:   errorCode,
 		Message: message,

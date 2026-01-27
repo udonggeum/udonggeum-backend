@@ -3,8 +3,8 @@ package repository
 import (
 	"fmt"
 
-	"gorm.io/gorm"
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
+	"gorm.io/gorm"
 )
 
 // CommunityRepository 커뮤니티 저장소 인터페이스
@@ -522,7 +522,7 @@ func (r *communityRepository) AcceptAnswer(postID, commentID uint) error {
 		if err := tx.Model(&model.CommunityPost{}).
 			Where("id = ?", postID).
 			Updates(map[string]interface{}{
-				"is_answered":         true,
+				"is_answered":        true,
 				"accepted_answer_id": commentID,
 			}).Error; err != nil {
 			return err
@@ -542,10 +542,19 @@ func (r *communityRepository) AcceptAnswer(postID, commentID uint) error {
 
 // UpdatePostPin 게시글 고정/해제
 func (r *communityRepository) UpdatePostPin(postID uint, isPinned bool) error {
-	return r.db.Model(&model.CommunityPost{}).
-		Where("id = ?", postID).
-		Update("is_pinned", isPinned).
-		Error
+	// ID를 지정하여 BeforeUpdate 훅이 올바른 레코드를 조회할 수 있도록 함
+	result := r.db.Model(&model.CommunityPost{ID: postID}).
+		Update("is_pinned", isPinned)
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("record not found")
+	}
+
+	return nil
 }
 
 // GetPostsWithImages 이미지가 있는 매장 게시글 조회

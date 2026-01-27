@@ -399,8 +399,8 @@ func (s *communityService) PinPost(postID, userID uint) error {
 		return fmt.Errorf("only store posts can be pinned")
 	}
 
-	// 매장 주인 확인
-	if err := s.checkStoreOwnership(*post.StoreID, userID); err != nil {
+	// 게시글 작성자(매장 주인)인지 확인
+	if post.UserID != userID {
 		return fmt.Errorf("only store owner can pin posts")
 	}
 
@@ -420,8 +420,8 @@ func (s *communityService) UnpinPost(postID, userID uint) error {
 		return fmt.Errorf("only store posts can be unpinned")
 	}
 
-	// 매장 주인 확인
-	if err := s.checkStoreOwnership(*post.StoreID, userID); err != nil {
+	// 게시글 작성자(매장 주인)인지 확인
+	if post.UserID != userID {
 		return fmt.Errorf("only store owner can unpin posts")
 	}
 
@@ -455,15 +455,6 @@ func (s *communityService) GetStoreGallery(storeID uint, page, pageSize int) ([]
 	}
 
 	return gallery, total, nil
-}
-
-// checkStoreOwnership 매장 소유권 확인
-func (s *communityService) checkStoreOwnership(storeID, userID uint) error {
-	// Store repository가 필요한데 현재 communityService에 없으므로
-	// 간단하게 post의 UserID로 확인
-	// 실제로는 StoreRepository를 주입받아서 확인해야 함
-	// 임시로 이 메서드는 항상 성공으로 처리 (나중에 개선)
-	return nil
 }
 
 // truncateText 텍스트 자르기

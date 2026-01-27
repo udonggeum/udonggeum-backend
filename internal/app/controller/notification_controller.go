@@ -9,6 +9,7 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/app/model"
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
+	"github.com/ikkim/udonggeum-backend/pkg/logger"
 )
 
 // NotificationController 알림 컨트롤러
@@ -173,6 +174,11 @@ func (c *NotificationController) MarkAllAsRead(ctx *gin.Context) {
 	}
 
 	if err := c.service.MarkAllAsRead(userID.(uint)); err != nil {
+		logger.Warn("Failed to mark all notifications as read", map[string]interface{}{
+			"user_id": userID.(uint),
+			"error":   err.Error(),
+		})
+
 		apperrors.InternalError(ctx, "알림을 읽음 처리하는 중 오류가 발생했습니다")
 		return
 	}
@@ -209,6 +215,12 @@ func (c *NotificationController) DeleteNotification(ctx *gin.Context) {
 	}
 
 	if err := c.service.DeleteNotification(uint(id), userID.(uint)); err != nil {
+		logger.Warn("Failed to delete notification", map[string]interface{}{
+			"notification_id": uint(id),
+			"user_id":         userID.(uint),
+			"error":           err.Error(),
+		})
+
 		if err.Error() == "unauthorized" {
 			apperrors.Forbidden(ctx, "해당 알림에 대한 권한이 없습니다")
 			return

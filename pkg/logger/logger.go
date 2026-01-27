@@ -3,6 +3,7 @@ package logger
 import (
 	"io"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -44,10 +45,10 @@ func Initialize(cfg Config) {
 			TimeFormat: time.RFC3339,
 			NoColor:    !cfg.EnableColor,
 		}
-		logger = zerolog.New(output).With().Timestamp().Caller().Logger()
+		logger = zerolog.New(output).With().Timestamp().Logger()
 	} else {
 		// JSON format (default)
-		logger = zerolog.New(output).With().Timestamp().Caller().Logger()
+		logger = zerolog.New(output).With().Timestamp().Logger()
 	}
 
 	globalLogger = &Logger{logger: logger}
@@ -96,7 +97,8 @@ func (l *Logger) WithContext(fields map[string]interface{}) *Logger {
 
 // Debug logs a debug message
 func (l *Logger) Debug(msg string, fields ...map[string]interface{}) {
-	event := l.logger.Debug()
+	pc, file, line, _ := runtime.Caller(1)
+	event := l.logger.Debug().Str("caller", zerolog.CallerMarshalFunc(pc, file, line))
 	if len(fields) > 0 {
 		for k, v := range fields[0] {
 			event = event.Interface(k, v)
@@ -107,7 +109,8 @@ func (l *Logger) Debug(msg string, fields ...map[string]interface{}) {
 
 // Info logs an info message
 func (l *Logger) Info(msg string, fields ...map[string]interface{}) {
-	event := l.logger.Info()
+	pc, file, line, _ := runtime.Caller(1)
+	event := l.logger.Info().Str("caller", zerolog.CallerMarshalFunc(pc, file, line))
 	if len(fields) > 0 {
 		for k, v := range fields[0] {
 			event = event.Interface(k, v)
@@ -118,7 +121,8 @@ func (l *Logger) Info(msg string, fields ...map[string]interface{}) {
 
 // Warn logs a warning message
 func (l *Logger) Warn(msg string, fields ...map[string]interface{}) {
-	event := l.logger.Warn()
+	pc, file, line, _ := runtime.Caller(1)
+	event := l.logger.Warn().Str("caller", zerolog.CallerMarshalFunc(pc, file, line))
 	if len(fields) > 0 {
 		for k, v := range fields[0] {
 			event = event.Interface(k, v)
@@ -129,7 +133,8 @@ func (l *Logger) Warn(msg string, fields ...map[string]interface{}) {
 
 // Error logs an error message
 func (l *Logger) Error(msg string, err error, fields ...map[string]interface{}) {
-	event := l.logger.Error().Err(err)
+	pc, file, line, _ := runtime.Caller(1)
+	event := l.logger.Error().Err(err).Str("caller", zerolog.CallerMarshalFunc(pc, file, line))
 	if len(fields) > 0 {
 		for k, v := range fields[0] {
 			event = event.Interface(k, v)
@@ -140,7 +145,8 @@ func (l *Logger) Error(msg string, err error, fields ...map[string]interface{}) 
 
 // Fatal logs a fatal message and exits
 func (l *Logger) Fatal(msg string, err error, fields ...map[string]interface{}) {
-	event := l.logger.Fatal().Err(err)
+	pc, file, line, _ := runtime.Caller(1)
+	event := l.logger.Fatal().Err(err).Str("caller", zerolog.CallerMarshalFunc(pc, file, line))
 	if len(fields) > 0 {
 		for k, v := range fields[0] {
 			event = event.Interface(k, v)
@@ -153,27 +159,67 @@ func (l *Logger) Fatal(msg string, err error, fields ...map[string]interface{}) 
 
 // Debug logs a debug message using the global logger
 func Debug(msg string, fields ...map[string]interface{}) {
-	Get().Debug(msg, fields...)
+	l := Get()
+	pc, file, line, _ := runtime.Caller(1)
+	event := l.logger.Debug().Str("caller", zerolog.CallerMarshalFunc(pc, file, line))
+	if len(fields) > 0 {
+		for k, v := range fields[0] {
+			event = event.Interface(k, v)
+		}
+	}
+	event.Msg(msg)
 }
 
 // Info logs an info message using the global logger
 func Info(msg string, fields ...map[string]interface{}) {
-	Get().Info(msg, fields...)
+	l := Get()
+	pc, file, line, _ := runtime.Caller(1)
+	event := l.logger.Info().Str("caller", zerolog.CallerMarshalFunc(pc, file, line))
+	if len(fields) > 0 {
+		for k, v := range fields[0] {
+			event = event.Interface(k, v)
+		}
+	}
+	event.Msg(msg)
 }
 
 // Warn logs a warning message using the global logger
 func Warn(msg string, fields ...map[string]interface{}) {
-	Get().Warn(msg, fields...)
+	l := Get()
+	pc, file, line, _ := runtime.Caller(1)
+	event := l.logger.Warn().Str("caller", zerolog.CallerMarshalFunc(pc, file, line))
+	if len(fields) > 0 {
+		for k, v := range fields[0] {
+			event = event.Interface(k, v)
+		}
+	}
+	event.Msg(msg)
 }
 
 // Error logs an error message using the global logger
 func Error(msg string, err error, fields ...map[string]interface{}) {
-	Get().Error(msg, err, fields...)
+	l := Get()
+	pc, file, line, _ := runtime.Caller(1)
+	event := l.logger.Error().Err(err).Str("caller", zerolog.CallerMarshalFunc(pc, file, line))
+	if len(fields) > 0 {
+		for k, v := range fields[0] {
+			event = event.Interface(k, v)
+		}
+	}
+	event.Msg(msg)
 }
 
 // Fatal logs a fatal message using the global logger and exits
 func Fatal(msg string, err error, fields ...map[string]interface{}) {
-	Get().Fatal(msg, err, fields...)
+	l := Get()
+	pc, file, line, _ := runtime.Caller(1)
+	event := l.logger.Fatal().Err(err).Str("caller", zerolog.CallerMarshalFunc(pc, file, line))
+	if len(fields) > 0 {
+		for k, v := range fields[0] {
+			event = event.Interface(k, v)
+		}
+	}
+	event.Msg(msg)
 }
 
 // WithContext returns a logger with additional context fields

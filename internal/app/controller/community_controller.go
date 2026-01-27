@@ -9,6 +9,7 @@ import (
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
 	apperrors "github.com/ikkim/udonggeum-backend/internal/errors"
 	"github.com/ikkim/udonggeum-backend/internal/middleware"
+	"github.com/ikkim/udonggeum-backend/pkg/logger"
 )
 
 // CommunityController 커뮤니티 컨트롤러
@@ -244,6 +245,13 @@ func (c *CommunityController) DeletePost(ctx *gin.Context) {
 	}
 
 	if err := c.service.DeletePost(uint(id), userID.(uint), userRole.(model.UserRole)); err != nil {
+		logger.Warn("Failed to delete post", map[string]interface{}{
+			"post_id": uint(id),
+			"user_id": userID.(uint),
+			"role":    userRole.(model.UserRole),
+			"error":   err.Error(),
+		})
+
 		if err.Error() == "permission denied" {
 			apperrors.Forbidden(ctx, "게시글 삭제 권한이 없습니다")
 			return
@@ -426,6 +434,13 @@ func (c *CommunityController) DeleteComment(ctx *gin.Context) {
 	}
 
 	if err := c.service.DeleteComment(uint(id), userID.(uint), userRole.(model.UserRole)); err != nil {
+		logger.Warn("Failed to delete comment", map[string]interface{}{
+			"comment_id": uint(id),
+			"user_id":    userID.(uint),
+			"role":       userRole.(model.UserRole),
+			"error":      err.Error(),
+		})
+
 		if err.Error() == "permission denied" {
 			apperrors.Forbidden(ctx, "댓글 삭제 권한이 없습니다")
 			return
@@ -541,6 +556,13 @@ func (c *CommunityController) AcceptAnswer(ctx *gin.Context) {
 	}
 
 	if err := c.service.AcceptAnswer(uint(postID), uint(commentID), userID.(uint)); err != nil {
+		logger.Warn("Failed to accept answer", map[string]interface{}{
+			"post_id":    uint(postID),
+			"comment_id": uint(commentID),
+			"user_id":    userID.(uint),
+			"error":      err.Error(),
+		})
+
 		if err.Error() == "only post author can accept answers" {
 			apperrors.Forbidden(ctx, "게시글 작성자만 답변을 채택할 수 있습니다")
 			return
@@ -580,11 +602,23 @@ func (c *CommunityController) PinPost(ctx *gin.Context) {
 	}
 
 	if err := c.service.PinPost(uint(id), userID.(uint)); err != nil {
-		if err.Error() == "only store owner can pin posts" {
+		logger.Warn("Failed to pin post", map[string]interface{}{
+			"post_id": uint(id),
+			"user_id": userID.(uint),
+			"error":   err.Error(),
+		})
+
+		errMsg := err.Error()
+		if errMsg == "only store owner can pin posts" {
 			apperrors.Forbidden(ctx, "매장 소유자만 게시글을 고정할 수 있습니다")
 			return
 		}
-		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "게시글 고정에 실패했습니다")
+		if errMsg == "only store posts can be pinned" {
+			apperrors.BadRequest(ctx, apperrors.PostEditFailed, "매장 게시글만 고정할 수 있습니다")
+			return
+		}
+		// "record not found" 또는 "failed to get post" 에러 처리
+		apperrors.NotFound(ctx, apperrors.PostNotFound, "게시글을 찾을 수 없습니다")
 		return
 	}
 
@@ -617,6 +651,12 @@ func (c *CommunityController) UnpinPost(ctx *gin.Context) {
 	}
 
 	if err := c.service.UnpinPost(uint(id), userID.(uint)); err != nil {
+		logger.Warn("Failed to unpin post", map[string]interface{}{
+			"post_id": uint(id),
+			"user_id": userID.(uint),
+			"error":   err.Error(),
+		})
+
 		if err.Error() == "only store owner can unpin posts" {
 			apperrors.Forbidden(ctx, "매장 소유자만 게시글 고정을 해제할 수 있습니다")
 			return
@@ -747,6 +787,13 @@ func (c *CommunityController) ReservePost(ctx *gin.Context) {
 
 	// 예약 처리
 	if err := c.service.ReservePost(uint(postID), req.ReservedByUserID, userID.(uint)); err != nil {
+		logger.Warn("Failed to reserve post", map[string]interface{}{
+			"post_id":             uint(postID),
+			"reserved_by_user_id": req.ReservedByUserID,
+			"user_id":             userID.(uint),
+			"error":               err.Error(),
+		})
+
 		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "게시글 예약에 실패했습니다")
 		return
 	}
@@ -784,6 +831,12 @@ func (c *CommunityController) CancelReservation(ctx *gin.Context) {
 
 	// 예약 취소 처리
 	if err := c.service.CancelReservation(uint(postID), userID.(uint)); err != nil {
+		logger.Warn("Failed to cancel reservation", map[string]interface{}{
+			"post_id": uint(postID),
+			"user_id": userID.(uint),
+			"error":   err.Error(),
+		})
+
 		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "예약 취소에 실패했습니다")
 		return
 	}
@@ -821,6 +874,12 @@ func (c *CommunityController) CompleteTransaction(ctx *gin.Context) {
 
 	// 거래 완료 처리
 	if err := c.service.CompleteTransaction(uint(postID), userID.(uint)); err != nil {
+		logger.Warn("Failed to complete transaction", map[string]interface{}{
+			"post_id": uint(postID),
+			"user_id": userID.(uint),
+			"error":   err.Error(),
+		})
+
 		apperrors.BadRequest(ctx, apperrors.PostEditFailed, "거래 완료 처리에 실패했습니다")
 		return
 	}
