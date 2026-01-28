@@ -24,6 +24,9 @@ type StoreListOptions struct {
 	Search     string
 	UserLat    *float64 // 사용자 위도 (거리순 정렬용)
 	UserLng    *float64 // 사용자 경도 (거리순 정렬용)
+	CenterLat  *float64 // 검색 중심 위도 (지도 기반 검색용)
+	CenterLng  *float64 // 검색 중심 경도 (지도 기반 검색용)
+	Radius     *float64 // 검색 반경 (미터 단위)
 	IsVerified *bool    // 인증 매장 필터
 	IsManaged  *bool    // 관리 매장 필터
 	Page       int      // 페이지 번호 (1부터 시작)
@@ -105,6 +108,9 @@ func (s *storeService) ListStores(opts StoreListOptions) (*repository.StoreListR
 		"page_size":   opts.PageSize,
 		"user_lat":    opts.UserLat,
 		"user_lng":    opts.UserLng,
+		"center_lat":  opts.CenterLat,
+		"center_lng":  opts.CenterLng,
+		"radius":      opts.Radius,
 	})
 
 	// Repository에서 거리 계산 및 정렬 처리
@@ -118,6 +124,9 @@ func (s *storeService) ListStores(opts StoreListOptions) (*repository.StoreListR
 		PageSize:   opts.PageSize,
 		UserLat:    opts.UserLat,
 		UserLng:    opts.UserLng,
+		CenterLat:  opts.CenterLat,
+		CenterLng:  opts.CenterLng,
+		Radius:     opts.Radius,
 	})
 	if err != nil {
 		logger.Error("Failed to list stores", err)

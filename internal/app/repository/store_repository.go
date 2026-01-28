@@ -17,6 +17,9 @@ type StoreFilter struct {
 	PageSize   int      // 페이지당 개수
 	UserLat    *float64 // 사용자 위도 (거리순 정렬용)
 	UserLng    *float64 // 사용자 경도 (거리순 정렬용)
+	CenterLat  *float64 // 검색 중심 위도 (지도 기반 검색용)
+	CenterLng  *float64 // 검색 중심 경도 (지도 기반 검색용)
+	Radius     *float64 // 검색 반경 (미터 단위)
 }
 
 type StoreLocation struct {
@@ -165,8 +168,46 @@ func (r *storeRepository) FindAll(filter StoreFilter) (*StoreListResult, error) 
 		query = query.Where("is_managed = ?", *filter.IsManaged)
 	}
 
+	// 지도 기반 반경 검색 (CenterLat, CenterLng, Radius가 모두 있을 때)
+	if filter.CenterLat != nil && filter.CenterLng != nil && filter.Radius != nil {
+		// Haversine 공식으로 거리 계산 (km 단위)
+		distanceFormula := `(6371 * acos(
+			cos(radians(?)) * cos(radians(latitude)) *
+			cos(radians(longitude) - radians(?)) +
+			sin(radians(?)) * sin(radians(latitude))
+		))`
+
+		// 반경 내 매장만 필터링 (Radius는 미터 단위이므로 km로 변환)
+		radiusKm := *filter.Radius / 1000.0
+		query = query.Where(distanceFormula+" <= ?",
+			*filter.CenterLat, *filter.CenterLng, *filter.CenterLat, radiusKm)
+
+		logger.Debug("Applying radius filter", map[string]interface{}{
+			"center_lat": *filter.CenterLat,
+			"center_lng": *filter.CenterLng,
+			"radius_m":   *filter.Radius,
+			"radius_km":  radiusKm,
+		})
+	}
+
 	// 사용자 위치 기반 거리 계산 및 정렬
-	if filter.UserLat != nil && filter.UserLng != nil {
+	// 지도 검색이 있으면 center 기준, 없으면 user 기준
+	var sortByDistance bool
+	var sortLat, sortLng float64
+
+	if filter.CenterLat != nil && filter.CenterLng != nil {
+		// 지도 검색: 지도 중심 기준으로 거리 계산
+		sortByDistance = true
+		sortLat = *filter.CenterLat
+		sortLng = *filter.CenterLng
+	} else if filter.UserLat != nil && filter.UserLng != nil {
+		// 사용자 위치 기준 거리 계산
+		sortByDistance = true
+		sortLat = *filter.UserLat
+		sortLng = *filter.UserLng
+	}
+
+	if sortByDistance {
 		// MySQL/MariaDB의 Haversine 공식을 사용한 거리 계산
 		// 결과는 km 단위
 		distanceFormula := `(6371 * acos(
@@ -177,7 +218,7 @@ func (r *storeRepository) FindAll(filter StoreFilter) (*StoreListResult, error) 
 
 		// SELECT 절에 distance 컬럼 추가
 		query = query.Select("stores.*, " + distanceFormula + " AS distance",
-			*filter.UserLat, *filter.UserLng, *filter.UserLat)
+			sortLat, sortLng, sortLat)
 
 		// 총 개수 조회 (SELECT distance 추가 전)
 		countQuery := r.db.Model(&model.Store{})
@@ -200,6 +241,18 @@ func (r *storeRepository) FindAll(filter StoreFilter) (*StoreListResult, error) 
 		}
 		if filter.IsManaged != nil {
 			countQuery = countQuery.Where("is_managed = ?", *filter.IsManaged)
+		}
+
+		// 반경 검색 필터도 count에 적용
+		if filter.CenterLat != nil && filter.CenterLng != nil && filter.Radius != nil {
+			distanceFormula := `(6371 * acos(
+				cos(radians(?)) * cos(radians(latitude)) *
+				cos(radians(longitude) - radians(?)) +
+				sin(radians(?)) * sin(radians(latitude))
+			))`
+			radiusKm := *filter.Radius / 1000.0
+			countQuery = countQuery.Where(distanceFormula+" <= ?",
+				*filter.CenterLat, *filter.CenterLng, *filter.CenterLat, radiusKm)
 		}
 
 		var totalCount int64
@@ -225,8 +278,8 @@ func (r *storeRepository) FindAll(filter StoreFilter) (*StoreListResult, error) 
 			logger.Error("Failed to find stores with distance sorting", err, map[string]interface{}{
 				"region":   filter.Region,
 				"district": filter.District,
-				"user_lat": *filter.UserLat,
-				"user_lng": *filter.UserLng,
+				"sort_lat": sortLat,
+				"sort_lng": sortLng,
 			})
 			return nil, err
 		}
@@ -239,8 +292,8 @@ func (r *storeRepository) FindAll(filter StoreFilter) (*StoreListResult, error) 
 		logger.Debug("Stores found and sorted by distance", map[string]interface{}{
 			"count":       len(stores),
 			"total_count": totalCount,
-			"user_lat":    *filter.UserLat,
-			"user_lng":    *filter.UserLng,
+			"sort_lat":    sortLat,
+			"sort_lng":    sortLng,
 		})
 
 		return &StoreListResult{

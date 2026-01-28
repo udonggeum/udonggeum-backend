@@ -81,6 +81,24 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 		}
 	}
 
+	// Parse map-based search center and radius (for "현재 지역 재검색")
+	var centerLat, centerLng, radius *float64
+	if latStr := c.Query("center_lat"); latStr != "" {
+		if lat, err := strconv.ParseFloat(latStr, 64); err == nil {
+			centerLat = &lat
+		}
+	}
+	if lngStr := c.Query("center_lng"); lngStr != "" {
+		if lng, err := strconv.ParseFloat(lngStr, 64); err == nil {
+			centerLng = &lng
+		}
+	}
+	if radiusStr := c.Query("radius"); radiusStr != "" {
+		if r, err := strconv.ParseFloat(radiusStr, 64); err == nil {
+			radius = &r
+		}
+	}
+
 	// Parse pagination parameters
 	var page, pageSize int
 	if pageStr := c.Query("page"); pageStr != "" {
@@ -111,6 +129,9 @@ func (ctrl *StoreController) ListStores(c *gin.Context) {
 		Search:     c.Query("search"),
 		UserLat:    userLat,
 		UserLng:    userLng,
+		CenterLat:  centerLat,
+		CenterLng:  centerLng,
+		Radius:     radius,
 		IsVerified: isVerified,
 		IsManaged:  isManaged,
 		Page:       page,
