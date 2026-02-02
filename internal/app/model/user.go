@@ -11,6 +11,7 @@ type UserRole string // 사용자 권한 타입
 const (
 	RoleUser  UserRole = "user"  // 일반 사용자 권한
 	RoleAdmin UserRole = "admin" // 관리자 권한
+	RoleMaster UserRole = "master" // 마스터 권한
 )
 
 type User struct {

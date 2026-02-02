@@ -405,7 +405,7 @@ func (r *Router) Setup() *gin.Engine {
 		// Admin routes (관리자 전용)
 		admin := v1.Group("/admin")
 		admin.Use(r.authMiddleware.Authenticate())
-		admin.Use(r.authMiddleware.RequireRole("admin"))
+		admin.Use(r.authMiddleware.RequireRole("master"))
 		{
 			// Store verifications (매장 인증 관리)
 			admin.GET("/verifications", r.storeController.ListPendingVerifications)
