@@ -230,25 +230,25 @@ func (r *Router) Setup() *gin.Engine {
 			goldPrices.GET("/type/:type", r.goldPriceController.GetPriceByType)
 			goldPrices.GET("/history/:type", r.goldPriceController.GetPriceHistory)
 
-			// Admin routes
+			// Master routes (매장 관리자 이상)
 			goldPrices.POST("",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("master"),
 				r.goldPriceController.CreatePrice,
 			)
 			goldPrices.PUT("/:id",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("master"),
 				r.goldPriceController.UpdatePrice,
 			)
 			goldPrices.POST("/update",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("master"),
 				r.goldPriceController.UpdateFromExternalAPI,
 			)
 			goldPrices.POST("/import",
 				r.authMiddleware.Authenticate(),
-				r.authMiddleware.RequireRole("admin"),
+				r.authMiddleware.RequireRole("master"),
 				r.goldPriceController.ImportHistoricalData,
 			)
 		}
