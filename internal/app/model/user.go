@@ -28,6 +28,13 @@ type User struct {
 	PhoneVerified    bool       `gorm:"default:false" json:"phone_verified"`         // 휴대폰 인증 여부
 	PhoneVerifiedAt  *time.Time `json:"phone_verified_at,omitempty"`                 // 휴대폰 인증 시각
 
+	// 마케팅 수신 동의
+	MarketingAgreed    bool       `gorm:"default:false" json:"marketing_agreed"`       // 마케팅 수신 동의 여부
+	MarketingAgreedAt  *time.Time `json:"marketing_agreed_at,omitempty"`               // 마케팅 수신 동의 시각
+	MarketingSMS       bool       `gorm:"default:false" json:"marketing_sms"`          // SMS 수신 동의
+	MarketingEmail     bool       `gorm:"default:false" json:"marketing_email"`        // 이메일 수신 동의
+	MarketingPush      bool       `gorm:"default:false" json:"marketing_push"`         // 푸시 수신 동의
+
 	ProfileImage string         `json:"profile_image"`                               // 프로필 이미지 URL
 	Address      string         `json:"address"`                                     // 주소
 	Latitude     *float64       `json:"latitude"`                                    // 위도 (주소 기반)

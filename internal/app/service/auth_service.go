@@ -33,7 +33,7 @@ var (
 )
 
 type AuthService interface {
-	Register(email, password, name, nickname, phone string) (*model.User, *util.TokenPair, error)
+	Register(email, password, name, nickname, phone string, marketingAgreed, marketingSMS, marketingEmail, marketingPush bool) (*model.User, *util.TokenPair, error)
 	Login(email, password string) (*model.User, *util.TokenPair, error)
 	GetUserByID(id uint) (*model.User, error)
 	UpdateProfile(userID uint, name, phone, nickname, address, profileImage *string) (*model.User, error)
@@ -87,7 +87,7 @@ func NewAuthService(
 	}
 }
 
-func (s *authService) Register(email, password, name, nickname, phone string) (*model.User, *util.TokenPair, error) {
+func (s *authService) Register(email, password, name, nickname, phone string, marketingAgreed, marketingSMS, marketingEmail, marketingPush bool) (*model.User, *util.TokenPair, error) {
 	logger.Info("Attempting user registration", map[string]interface{}{
 		"email":    email,
 		"name":     name,
@@ -154,13 +154,24 @@ func (s *authService) Register(email, password, name, nickname, phone string) (*
 	}
 
 	// Create user
+	var marketingAgreedAt *time.Time
+	if marketingAgreed {
+		now := time.Now()
+		marketingAgreedAt = &now
+	}
+
 	user := &model.User{
-		Email:        email,
-		PasswordHash: hashedPassword,
-		Name:         name,
-		Nickname:     finalNickname,
-		Phone:        phone,
-		Role:         model.RoleUser,
+		Email:             email,
+		PasswordHash:      hashedPassword,
+		Name:              name,
+		Nickname:          finalNickname,
+		Phone:             phone,
+		Role:              model.RoleUser,
+		MarketingAgreed:   marketingAgreed,
+		MarketingAgreedAt: marketingAgreedAt,
+		MarketingSMS:      marketingSMS,
+		MarketingEmail:    marketingEmail,
+		MarketingPush:     marketingPush,
 	}
 
 	if err := s.userRepo.Create(user); err != nil {

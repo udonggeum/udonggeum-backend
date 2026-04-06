@@ -24,11 +24,15 @@ func NewAuthController(authService service.AuthService, passwordResetService ser
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
-	Name     string `json:"name" binding:"required"`
-	Nickname string `json:"nickname"`
-	Phone    string `json:"phone"`
+	Email          string `json:"email" binding:"required,email"`
+	Password       string `json:"password" binding:"required,min=6"`
+	Name           string `json:"name" binding:"required"`
+	Nickname       string `json:"nickname"`
+	Phone          string `json:"phone"`
+	MarketingAgreed bool  `json:"marketing_agreed"`
+	MarketingSMS    bool  `json:"marketing_sms"`
+	MarketingEmail  bool  `json:"marketing_email"`
+	MarketingPush   bool  `json:"marketing_push"`
 }
 
 type LoginRequest struct {
@@ -85,7 +89,7 @@ func (ctrl *AuthController) Register(c *gin.Context) {
 		"nickname": req.Nickname,
 	})
 
-	user, tokens, err := ctrl.authService.Register(req.Email, req.Password, req.Name, req.Nickname, req.Phone)
+	user, tokens, err := ctrl.authService.Register(req.Email, req.Password, req.Name, req.Nickname, req.Phone, req.MarketingAgreed, req.MarketingSMS, req.MarketingEmail, req.MarketingPush)
 	if err != nil {
 		if errors.Is(err, service.ErrEmailAlreadyExists) {
 			log.Warn("Registration failed: email already exists", map[string]interface{}{
