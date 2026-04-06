@@ -19,6 +19,7 @@ type Config struct {
 	S3        S3Config
 	GoldPrice GoldPriceConfig
 	Kakao     KakaoConfig
+	Google    GoogleConfig
 	OpenAI    OpenAIConfig
 }
 
@@ -83,6 +84,12 @@ type GoldPriceConfig struct {
 }
 
 type KakaoConfig struct {
+	ClientID     string
+	ClientSecret string
+	RedirectURI  string
+}
+
+type GoogleConfig struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string
@@ -154,6 +161,11 @@ func Load() (*Config, error) {
 			ClientID:     getEnv("KAKAO_CLIENT_ID", ""),
 			ClientSecret: getEnv("KAKAO_CLIENT_SECRET", ""),
 			RedirectURI:  getEnv("KAKAO_REDIRECT_URI", "http://localhost:8080/api/v1/auth/kakao/callback"),
+		},
+		Google: GoogleConfig{
+			ClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
+			ClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
+			RedirectURI:  getEnv("GOOGLE_REDIRECT_URI", "http://localhost:3000/oauth/callback/google"),
 		},
 		OpenAI: OpenAIConfig{
 			APIKey: getEnv("OPENAI_API_KEY", ""),

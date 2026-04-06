@@ -43,6 +43,8 @@ type AuthService interface {
 	RevokeToken(refreshToken string) error
 	GetKakaoLoginURL() string
 	KakaoLogin(code string) (*model.User, *util.TokenPair, error)
+	GetGoogleLoginURL() string
+	GoogleLogin(code string) (*model.User, *util.TokenPair, error)
 
 	// 이메일/휴대폰 인증
 	SendEmailVerification(email string) error
@@ -52,13 +54,16 @@ type AuthService interface {
 }
 
 type authService struct {
-	userRepo          repository.UserRepository
-	jwtSecret         string
-	accessExpiry      time.Duration
-	refreshExpiry     time.Duration
-	kakaoClientID     string
-	kakaoClientSecret string
-	kakaoRedirectURI  string
+	userRepo           repository.UserRepository
+	jwtSecret          string
+	accessExpiry       time.Duration
+	refreshExpiry      time.Duration
+	kakaoClientID      string
+	kakaoClientSecret  string
+	kakaoRedirectURI   string
+	googleClientID     string
+	googleClientSecret string
+	googleRedirectURI  string
 }
 
 func NewAuthService(
@@ -66,15 +71,19 @@ func NewAuthService(
 	jwtSecret string,
 	accessExpiry, refreshExpiry time.Duration,
 	kakaoClientID, kakaoClientSecret, kakaoRedirectURI string,
+	googleClientID, googleClientSecret, googleRedirectURI string,
 ) AuthService {
 	return &authService{
-		userRepo:          userRepo,
-		jwtSecret:         jwtSecret,
-		accessExpiry:      accessExpiry,
-		refreshExpiry:     refreshExpiry,
-		kakaoClientID:     kakaoClientID,
-		kakaoClientSecret: kakaoClientSecret,
-		kakaoRedirectURI:  kakaoRedirectURI,
+		userRepo:           userRepo,
+		jwtSecret:          jwtSecret,
+		accessExpiry:       accessExpiry,
+		refreshExpiry:      refreshExpiry,
+		kakaoClientID:      kakaoClientID,
+		kakaoClientSecret:  kakaoClientSecret,
+		kakaoRedirectURI:   kakaoRedirectURI,
+		googleClientID:     googleClientID,
+		googleClientSecret: googleClientSecret,
+		googleRedirectURI:  googleRedirectURI,
 	}
 }
 
@@ -1013,4 +1022,222 @@ func (s *authService) VerifyPhone(userID uint, phone, code string) error {
 	}
 
 	return nil
+}
+
+// === Google OAuth ===
+
+// googleTokenResponse represents Google token response
+type googleTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	IDToken     string `json:"id_token"`
+	ExpiresIn   int    `json:"expires_in"`
+	TokenType   string `json:"token_type"`
+}
+
+// googleUserInfo represents Google user information
+type googleUserInfo struct {
+	Sub           string `json:"sub"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Name          string `json:"name"`
+	GivenName     string `json:"given_name"`
+	FamilyName    string `json:"family_name"`
+	Picture       string `json:"picture"`
+}
+
+// GetGoogleLoginURL returns the Google OAuth login URL
+func (s *authService) GetGoogleLoginURL() string {
+	scope := "openid profile email"
+	return fmt.Sprintf(
+		"https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s",
+		s.googleClientID, s.googleRedirectURI, scope,
+	)
+}
+
+// GoogleLogin handles Google OAuth login
+func (s *authService) GoogleLogin(code string) (*model.User, *util.TokenPair, error) {
+	logger.Info("Starting Google login", map[string]interface{}{
+		"code": code,
+	})
+
+	// 1. Get Google access token
+	googleToken, err := s.getGoogleToken(code)
+	if err != nil {
+		logger.Error("Failed to get Google access token", err, nil)
+		return nil, nil, fmt.Errorf("failed to get Google access token: %w", err)
+	}
+
+	// 2. Get user info from Google
+	googleUser, err := s.getGoogleUserInfo(googleToken.AccessToken)
+	if err != nil {
+		logger.Error("Failed to get Google user info", err, nil)
+		return nil, nil, fmt.Errorf("failed to get Google user info: %w", err)
+	}
+
+	logger.Debug("Google user info retrieved", map[string]interface{}{
+		"email": googleUser.Email,
+	})
+
+	// 3. Check if user already exists
+	user, err := s.userRepo.FindByEmail(googleUser.Email)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Error("Failed to check existing user", err, map[string]interface{}{
+			"email": googleUser.Email,
+		})
+		return nil, nil, err
+	}
+
+	// 4. Create new user if not exists
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Info("Creating new user from Google login", map[string]interface{}{
+			"email": googleUser.Email,
+		})
+
+		nickname, err := s.generateUniqueNickname()
+		if err != nil {
+			logger.Error("Failed to generate unique nickname", err, nil)
+			return nil, nil, err
+		}
+
+		user = &model.User{
+			Email:        googleUser.Email,
+			PasswordHash: "",
+			Name:         googleUser.Name,
+			Nickname:     nickname,
+			ProfileImage: googleUser.Picture,
+			Role:         model.RoleUser,
+		}
+
+		if err := s.userRepo.Create(user); err != nil {
+			logger.Error("Failed to create Google user", err, map[string]interface{}{
+				"email": googleUser.Email,
+			})
+			return nil, nil, err
+		}
+
+		logger.Info("New user created from Google login", map[string]interface{}{
+			"user_id": user.ID,
+			"email":   user.Email,
+		})
+	} else {
+		logger.Info("Existing user found for Google login", map[string]interface{}{
+			"user_id": user.ID,
+			"email":   user.Email,
+		})
+	}
+
+	// 5. Generate JWT tokens
+	tokens, err := util.GenerateTokenPair(
+		user.ID,
+		user.Email,
+		string(user.Role),
+		s.jwtSecret,
+		s.accessExpiry,
+		s.refreshExpiry,
+	)
+	if err != nil {
+		logger.Error("Failed to generate tokens for Google login", err, map[string]interface{}{
+			"user_id": user.ID,
+		})
+		return nil, nil, err
+	}
+
+	logger.Info("Google login successful", map[string]interface{}{
+		"user_id": user.ID,
+		"email":   user.Email,
+	})
+
+	return user, tokens, nil
+}
+
+// getGoogleToken exchanges authorization code for access token
+func (s *authService) getGoogleToken(code string) (*googleTokenResponse, error) {
+	logger.Debug("Requesting Google token")
+
+	reqBody := fmt.Sprintf(
+		"grant_type=authorization_code&client_id=%s&client_secret=%s&redirect_uri=%s&code=%s",
+		s.googleClientID, s.googleClientSecret, s.googleRedirectURI, code,
+	)
+
+	resp, err := http.Post(
+		"https://oauth2.googleapis.com/token",
+		"application/x-www-form-urlencoded",
+		strings.NewReader(reqBody),
+	)
+	if err != nil {
+		logger.Error("Failed to make HTTP request to Google token endpoint", err, nil)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Error("Failed to read Google token response", err, nil)
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("Google token request failed", nil, map[string]interface{}{
+			"status_code":   resp.StatusCode,
+			"response_body": string(body),
+		})
+		return nil, fmt.Errorf("google token request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp googleTokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return nil, err
+	}
+
+	if tokenResp.AccessToken == "" {
+		return nil, fmt.Errorf("google token response missing access_token")
+	}
+
+	logger.Debug("Google token obtained successfully")
+	return &tokenResp, nil
+}
+
+// getGoogleUserInfo fetches user information from Google
+func (s *authService) getGoogleUserInfo(accessToken string) (*googleUserInfo, error) {
+	logger.Debug("Requesting Google user info")
+
+	req, err := http.NewRequest("GET", "https://www.googleapis.com/oauth2/v3/userinfo", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("Google user info request failed", nil, map[string]interface{}{
+			"status_code":   resp.StatusCode,
+			"response_body": string(body),
+		})
+		return nil, fmt.Errorf("google user info request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var userInfo googleUserInfo
+	if err := json.Unmarshal(body, &userInfo); err != nil {
+		return nil, err
+	}
+
+	if userInfo.Email == "" {
+		return nil, fmt.Errorf("구글 사용자가 이메일을 제공하지 않았습니다")
+	}
+
+	logger.Debug("Google user info obtained successfully", map[string]interface{}{
+		"email": userInfo.Email,
+	})
+	return &userInfo, nil
 }

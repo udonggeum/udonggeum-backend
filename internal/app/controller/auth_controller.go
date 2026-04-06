@@ -614,6 +614,81 @@ func (ctrl *AuthController) KakaoCallback(c *gin.Context) {
 	})
 }
 
+// GetGoogleLoginURL returns the Google OAuth login URL
+// GET /api/v1/auth/google/login
+func (ctrl *AuthController) GetGoogleLoginURL(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	log.Debug("Generating Google login URL")
+
+	loginURL := ctrl.authService.GetGoogleLoginURL()
+
+	log.Info("Google login URL generated", map[string]interface{}{
+		"url": loginURL,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"login_url": loginURL,
+	})
+}
+
+// GoogleCallback handles Google OAuth callback
+// GET /api/v1/auth/google/callback
+func (ctrl *AuthController) GoogleCallback(c *gin.Context) {
+	log := middleware.GetLoggerFromContext(c)
+
+	code := c.Query("code")
+	if code == "" {
+		log.Warn("Google callback without authorization code", nil)
+		apperrors.BadRequest(c, apperrors.ValidationRequired, "인증 코드가 필요합니다")
+		return
+	}
+
+	log.Debug("Processing Google callback", map[string]interface{}{
+		"code": code,
+	})
+
+	user, tokens, err := ctrl.authService.GoogleLogin(code)
+	if err != nil {
+		log.Error("Google login failed", err, map[string]interface{}{
+			"code": code,
+		})
+
+		errStr := err.Error()
+		if strings.Contains(errStr, "이메일을 제공하지 않았습니다") {
+			apperrors.BadRequest(c, apperrors.AuthEmailNotVerified, "구글 로그인 시 이메일 동의가 필요합니다")
+			return
+		} else if strings.Contains(errStr, "status 401") ||
+			strings.Contains(errStr, "status 400") {
+			apperrors.Unauthorized(c, "구글 인증에 실패했습니다. 다시 시도해주세요")
+			return
+		}
+
+		apperrors.InternalError(c, "구글 로그인에 실패했습니다")
+		return
+	}
+
+	log.Info("Google login successful", map[string]interface{}{
+		"user_id": user.ID,
+		"email":   user.Email,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Google login successful",
+		"user": gin.H{
+			"id":             user.ID,
+			"email":          user.Email,
+			"name":           user.Name,
+			"nickname":       user.Nickname,
+			"phone":          user.Phone,
+			"phone_verified": user.PhoneVerified,
+			"profile_image":  user.ProfileImage,
+			"role":           user.Role,
+		},
+		"tokens": tokens,
+	})
+}
+
 // === 이메일/휴대폰 인증 관련 API ===
 
 type SendEmailVerificationRequest struct {

@@ -1,6 +1,8 @@
 package scheduler
 
 import (
+	"time"
+
 	"github.com/ikkim/udonggeum-backend/internal/app/service"
 	"github.com/ikkim/udonggeum-backend/pkg/logger"
 	"github.com/robfig/cron/v3"
@@ -14,8 +16,14 @@ type GoldPriceScheduler struct {
 
 // NewGoldPriceScheduler 금 시세 스케줄러 생성
 func NewGoldPriceScheduler(goldPriceService service.GoldPriceService) *GoldPriceScheduler {
+	kst, err := time.LoadLocation("Asia/Seoul")
+	if err != nil {
+		logger.Error("Failed to load KST timezone, falling back to UTC", err)
+		kst = time.UTC
+	}
+
 	return &GoldPriceScheduler{
-		cron:             cron.New(),
+		cron:             cron.New(cron.WithLocation(kst)),
 		goldPriceService: goldPriceService,
 	}
 }

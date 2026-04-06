@@ -89,6 +89,9 @@ func main() {
 		cfg.Kakao.ClientID,
 		cfg.Kakao.ClientSecret,
 		cfg.Kakao.RedirectURI,
+		cfg.Google.ClientID,
+		cfg.Google.ClientSecret,
+		cfg.Google.RedirectURI,
 	)
 	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
 	storeService := service.NewStoreService(dbConn, storeRepo, userRepo)

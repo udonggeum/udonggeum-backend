@@ -84,6 +84,10 @@ func (r *Router) Setup() *gin.Engine {
 			auth.GET("/kakao/login", r.authController.GetKakaoLoginURL)
 			auth.GET("/kakao/callback", r.authController.KakaoCallback)
 
+			// Google OAuth
+			auth.GET("/google/login", r.authController.GetGoogleLoginURL)
+			auth.GET("/google/callback", r.authController.GoogleCallback)
+
 			// 이메일/휴대폰 인증
 			auth.POST("/send-email-verification", r.authController.SendEmailVerification)
 			auth.POST("/verify-email", r.authController.VerifyEmail)
