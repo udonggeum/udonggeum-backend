@@ -80,6 +80,7 @@ func main() {
 	reviewRepo := repository.NewReviewRepository(dbConn)
 	chatRepo := repository.NewChatRepository(dbConn)
 	notificationRepo := repository.NewNotificationRepository(dbConn)
+	faqRepo := repository.NewFAQRepository(dbConn)
 
 	authService := service.NewAuthService(
 		userRepo,
@@ -110,6 +111,7 @@ func main() {
 	aiService := service.NewAIService(cfg)
 
 	chatService := service.NewChatService(dbConn, chatRepo, hub)
+	faqService := service.NewFAQService(faqRepo)
 
 	// Initialize S3 storage
 	s3Storage := storage.NewS3Storage(
@@ -129,6 +131,7 @@ func main() {
 	tagController := controller.NewTagController(tagService)
 	chatController := controller.NewChatController(chatService, hub)
 	notificationController := controller.NewNotificationController(notificationService)
+	faqController := controller.NewFAQController(faqService)
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
@@ -142,6 +145,7 @@ func main() {
 		tagController,
 		chatController,
 		notificationController,
+		faqController,
 		authMiddleware,
 		cfg,
 	)

@@ -4,55 +4,46 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
-// Naver Cloud SENS SMS 요청 구조체
-type SENSMessageRequest struct {
-	Type        string        `json:"type"`        // SMS or LMS
-	From        string        `json:"from"`        // 발신번호
-	Content     string        `json:"content"`     // 기본 메시지 내용
-	Messages    []SENSMessage `json:"messages"`    // 수신자 정보
-	Subject     string        `json:"subject,omitempty"` // LMS 제목
-	ContentType string        `json:"contentType,omitempty"` // COMM or AD
+// Solapi SMS 요청 구조체
+type SolapiMessage struct {
+	To   string `json:"to"`
+	From string `json:"from"`
+	Text string `json:"text"`
 }
 
-type SENSMessage struct {
-	To      string `json:"to"`      // 수신번호
-	Content string `json:"content,omitempty"` // 개별 메시지 (optional)
+type SolapiRequest struct {
+	Message SolapiMessage `json:"message"`
 }
 
-// Naver Cloud SENS 시그니처 생성
-func makeSignature(method, uri, timestamp, accessKey, secretKey string) string {
-	space := " "
-	newLine := "\n"
-
-	message := method + space + uri + newLine + timestamp + newLine + accessKey
-	hmacHash := hmac.New(sha256.New, []byte(secretKey))
-	hmacHash.Write([]byte(message))
-	signature := base64.StdEncoding.EncodeToString(hmacHash.Sum(nil))
-
-	return signature
+// Solapi HMAC-SHA256 서명 생성
+func makeSolapiSignature(date, salt, secretKey string) string {
+	message := date + salt
+	h := hmac.New(sha256.New, []byte(secretKey))
+	h.Write([]byte(message))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
-// SendVerificationSMS sends a verification SMS via Naver Cloud SENS
+// SendVerificationSMS sends a verification SMS via Solapi
 func SendVerificationSMS(phoneNumber, code string) error {
-	// Naver Cloud SENS 설정
-	serviceID := os.Getenv("NAVER_SENS_SERVICE_ID")
-	accessKey := os.Getenv("NAVER_SENS_ACCESS_KEY")
-	secretKey := os.Getenv("NAVER_SENS_SECRET_KEY")
-	fromNumber := os.Getenv("NAVER_SENS_FROM_NUMBER")
+	apiKey := os.Getenv("SOLAPI_API_KEY")
+	apiSecret := os.Getenv("SOLAPI_API_SECRET")
+	fromNumber := os.Getenv("SOLAPI_FROM_NUMBER")
 
-	// 개발 모드: SENS 설정이 없으면 콘솔에 출력만
-	if serviceID == "" || accessKey == "" || secretKey == "" || fromNumber == "" {
+	// 개발 모드: Solapi 설정이 없으면 콘솔에 출력만
+	if apiKey == "" || apiSecret == "" || fromNumber == "" {
 		log.Printf("================================")
 		log.Printf("[개발 모드] SMS 인증 활성화")
 		log.Printf("휴대폰 인증 코드를 아무거나 입력하세요")
@@ -61,18 +52,19 @@ func SendVerificationSMS(phoneNumber, code string) error {
 		return nil
 	}
 
+	// 전화번호 정규화 (하이픈/공백 제거)
+	phoneNumber = strings.ReplaceAll(phoneNumber, "-", "")
+	phoneNumber = strings.ReplaceAll(phoneNumber, " ", "")
+
 	// SMS 내용
-	content := fmt.Sprintf("[우리동네금은방] 인증번호는 [%s]입니다. 5분 이내에 입력해주세요.", code)
+	text := fmt.Sprintf("[우리동네금은방] 인증번호는 [%s]입니다. 5분 이내에 입력해주세요.", code)
 
 	// 요청 body 구성
-	requestBody := SENSMessageRequest{
-		Type:    "SMS",
-		From:    fromNumber,
-		Content: content,
-		Messages: []SENSMessage{
-			{
-				To: phoneNumber,
-			},
+	requestBody := SolapiRequest{
+		Message: SolapiMessage{
+			To:   phoneNumber,
+			From: fromNumber,
+			Text: text,
 		},
 	}
 
@@ -81,26 +73,26 @@ func SendVerificationSMS(phoneNumber, code string) error {
 		return fmt.Errorf("JSON 인코딩 실패: %v", err)
 	}
 
-	// API 요청 준비
-	timestamp := strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10)
-	uri := fmt.Sprintf("/sms/v2/services/%s/messages", serviceID)
-	apiURL := fmt.Sprintf("https://sens.apigw.ntruss.com%s", uri)
+	// 인증 헤더 구성
+	date := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	salt := uuid.New().String()
+	signature := makeSolapiSignature(date, salt, apiSecret)
 
-	// 시그니처 생성
-	signature := makeSignature("POST", uri, timestamp, accessKey, secretKey)
+	authHeader := fmt.Sprintf(
+		"HMAC-SHA256 apiKey=%s, date=%s, salt=%s, signature=%s",
+		apiKey, date, salt, signature,
+	)
 
 	// HTTP 요청
+	apiURL := "https://api.solapi.com/messages/v4/send"
 	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("HTTP 요청 생성 실패: %v", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.Header.Set("x-ncp-apigw-timestamp", timestamp)
-	req.Header.Set("x-ncp-iam-access-key", accessKey)
-	req.Header.Set("x-ncp-apigw-signature-v2", signature)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
 
-	// 요청 전송
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -108,14 +100,13 @@ func SendVerificationSMS(phoneNumber, code string) error {
 	}
 	defer resp.Body.Close()
 
-	// 응답 확인
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("응답 읽기 실패: %v", err)
 	}
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		log.Printf("SENS API 오류 응답: %s", string(body))
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		log.Printf("Solapi API 오류 응답: %s", string(body))
 		return fmt.Errorf("SMS 발송 실패 (상태 코드: %d): %s", resp.StatusCode, string(body))
 	}
 

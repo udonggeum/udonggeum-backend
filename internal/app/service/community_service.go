@@ -25,6 +25,7 @@ type CommunityService interface {
 	// Like operations
 	TogglePostLike(postID, userID uint) (bool, error) // returns new like status
 	ToggleCommentLike(commentID, userID uint) (bool, error)
+	GetUserLikedPosts(userID uint) ([]model.CommunityPost, error)
 
 	// QnA operations
 	AcceptAnswer(postID, commentID, userID uint) error
@@ -566,4 +567,8 @@ func (s *communityService) CompleteTransaction(postID, userID uint) error {
 	}
 
 	return nil
+}
+
+func (s *communityService) GetUserLikedPosts(userID uint) ([]model.CommunityPost, error) {
+	return s.repo.GetUserLikedPosts(userID)
 }

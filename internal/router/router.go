@@ -17,6 +17,7 @@ type Router struct {
 	tagController          *controller.TagController
 	chatController         *controller.ChatController
 	notificationController *controller.NotificationController
+	faqController          *controller.FAQController
 	authMiddleware         *middleware.AuthMiddleware
 	config                 *config.Config
 }
@@ -31,6 +32,7 @@ func NewRouter(
 	tagController *controller.TagController,
 	chatController *controller.ChatController,
 	notificationController *controller.NotificationController,
+	faqController *controller.FAQController,
 	authMiddleware *middleware.AuthMiddleware,
 	cfg *config.Config,
 ) *Router {
@@ -44,6 +46,7 @@ func NewRouter(
 		tagController:          tagController,
 		chatController:         chatController,
 		notificationController: notificationController,
+		faqController:          faqController,
 		authMiddleware:         authMiddleware,
 		config:                 cfg,
 	}
@@ -169,6 +172,10 @@ func (r *Router) Setup() *gin.Engine {
 			users.GET("/me/liked-stores",
 				r.authMiddleware.Authenticate(),
 				r.storeController.GetUserLikedStores,
+			)
+			users.GET("/me/liked-posts",
+				r.authMiddleware.Authenticate(),
+				r.communityController.GetUserLikedPosts,
 			)
 			users.GET("/me/store",
 				r.authMiddleware.Authenticate(),
@@ -404,6 +411,27 @@ func (r *Router) Setup() *gin.Engine {
 					r.communityController.ToggleCommentLike,
 				)
 			}
+		}
+
+		// FAQ routes
+		faqs := v1.Group("/faqs")
+		{
+			faqs.GET("", r.faqController.GetFAQs) // 공개
+			faqs.POST("",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("master"),
+				r.faqController.CreateFAQ,
+			)
+			faqs.PUT("/:id",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("master"),
+				r.faqController.UpdateFAQ,
+			)
+			faqs.DELETE("/:id",
+				r.authMiddleware.Authenticate(),
+				r.authMiddleware.RequireRole("master"),
+				r.faqController.DeleteFAQ,
+			)
 		}
 
 		// Admin routes (관리자 전용)

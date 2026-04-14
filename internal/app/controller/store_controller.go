@@ -693,6 +693,10 @@ func (ctrl *StoreController) GetUserLikedStores(c *gin.Context) {
 		return
 	}
 
+	for i := range stores {
+		stores[i].IsLiked = true
+	}
+
 	log.Info("User liked stores retrieved", map[string]interface{}{
 		"user_id": userID,
 		"count":   len(stores),

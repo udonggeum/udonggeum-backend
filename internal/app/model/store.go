@@ -86,6 +86,8 @@ type Store struct {
 	// 매장 태그 (Many-to-Many 관계)
 	Tags []Tag `gorm:"many2many:store_tags;" json:"tags,omitempty"`
 
+	IsLiked bool `gorm:"-" json:"is_liked"` // 현재 사용자의 좋아요 여부 (DB 컬럼 아님)
+
 	CreatedAt time.Time      `json:"created_at"` // 생성 시각
 	UpdatedAt time.Time      `json:"updated_at"` // 수정 시각
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"` // 삭제 시각(소프트 삭제)

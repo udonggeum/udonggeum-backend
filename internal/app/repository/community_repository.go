@@ -29,6 +29,7 @@ type CommunityRepository interface {
 	LikePost(postID, userID uint) error
 	UnlikePost(postID, userID uint) error
 	IsPostLiked(postID, userID uint) (bool, error)
+	GetUserLikedPosts(userID uint) ([]model.CommunityPost, error)
 	LikeComment(commentID, userID uint) error
 	UnlikeComment(commentID, userID uint) error
 	IsCommentLiked(commentID, userID uint) (bool, error)
@@ -612,6 +613,18 @@ func (r *communityRepository) CancelReservation(postID uint) error {
 }
 
 // CompleteTransaction 거래 완료
+func (r *communityRepository) GetUserLikedPosts(userID uint) ([]model.CommunityPost, error) {
+	var posts []model.CommunityPost
+	err := r.db.
+		Joins("JOIN post_likes ON post_likes.post_id = community_posts.id").
+		Where("post_likes.user_id = ? AND community_posts.deleted_at IS NULL", userID).
+		Preload("User.Store").
+		Preload("Store").
+		Order("post_likes.created_at DESC").
+		Find(&posts).Error
+	return posts, err
+}
+
 func (r *communityRepository) CompleteTransaction(postID uint) error {
 	now := gorm.Expr("NOW()")
 	status := "completed"

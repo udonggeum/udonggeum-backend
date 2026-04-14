@@ -487,6 +487,36 @@ func (c *CommunityController) TogglePostLike(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"is_liked": isLiked})
 }
 
+// GetUserLikedPosts godoc
+// @Summary 내가 좋아요한 게시글 목록
+// @Description 로그인한 사용자가 좋아요한 게시글 목록을 반환합니다
+// @Tags community
+// @Produce json
+// @Success 200 {object} gin.H{posts=[]model.CommunityPost}
+// @Failure 401 {object} gin.H
+// @Security BearerAuth
+// @Router /api/v1/users/me/liked-posts [get]
+func (c *CommunityController) GetUserLikedPosts(ctx *gin.Context) {
+	userID, exists := ctx.Get(middleware.UserIDKey)
+	if !exists {
+		apperrors.Unauthorized(ctx, "로그인이 필요합니다")
+		return
+	}
+
+	posts, err := c.service.GetUserLikedPosts(userID.(uint))
+	if err != nil {
+		apperrors.InternalError(ctx, "관심글 목록 조회에 실패했습니다")
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"data":      posts,
+		"total":     len(posts),
+		"page":      1,
+		"page_size": len(posts),
+	})
+}
+
 // ToggleCommentLike godoc
 // @Summary 댓글 좋아요 토글
 // @Description 댓글 좋아요를 추가하거나 취소합니다

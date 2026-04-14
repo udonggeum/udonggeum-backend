@@ -153,10 +153,10 @@ func (r *storeRepository) FindAll(filter StoreFilter) (*StoreListResult, error) 
 	}
 	if filter.Search != "" {
 		like := "%" + filter.Search + "%"
-		// 매장명, 지역, 시군구, 동, 주소 모두 검색
+		// 매장명은 부분 일치(LIKE) 유지, 지역/동/주소는 FTS로 단어 단위 정확 매칭
 		query = query.Where(
-			"name LIKE ? OR region LIKE ? OR district LIKE ? OR dong LIKE ? OR address LIKE ?",
-			like, like, like, like, like,
+			"name ILIKE ? OR to_tsvector('simple', coalesce(region,'') || ' ' || coalesce(district,'') || ' ' || coalesce(dong,'') || ' ' || coalesce(address,'')) @@ plainto_tsquery('simple', ?)",
+			like, filter.Search,
 		)
 	}
 
@@ -230,10 +230,9 @@ func (r *storeRepository) FindAll(filter StoreFilter) (*StoreListResult, error) 
 		}
 		if filter.Search != "" {
 			like := "%" + filter.Search + "%"
-			// 매장명, 지역, 시군구, 동, 주소 모두 검색
 			countQuery = countQuery.Where(
-				"name LIKE ? OR region LIKE ? OR district LIKE ? OR dong LIKE ? OR address LIKE ?",
-				like, like, like, like, like,
+				"name ILIKE ? OR to_tsvector('simple', coalesce(region,'') || ' ' || coalesce(district,'') || ' ' || coalesce(dong,'') || ' ' || coalesce(address,'')) @@ plainto_tsquery('simple', ?)",
+				like, filter.Search,
 			)
 		}
 		if filter.IsVerified != nil {
