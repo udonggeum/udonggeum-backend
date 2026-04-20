@@ -14,7 +14,7 @@ import (
 
 // AIService AI 서비스 인터페이스
 type AIService interface {
-	GenerateContent(req *model.GenerateContentRequest) (string, error)
+	GenerateContent(req *model.GenerateContentRequest) ([]string, error)
 }
 
 type aiService struct {
@@ -23,9 +23,7 @@ type aiService struct {
 
 // NewAIService AI 서비스 생성자
 func NewAIService(cfg *config.Config) AIService {
-	return &aiService{
-		config: cfg,
-	}
+	return &aiService{config: cfg}
 }
 
 // OpenAI API 요청 구조체
@@ -51,105 +49,116 @@ type openAIResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// GenerateContent AI로 게시글 내용 생성
-func (s *aiService) GenerateContent(req *model.GenerateContentRequest) (string, error) {
+// GenerateContent AI로 게시글 내용 3가지 버전 생성
+func (s *aiService) GenerateContent(req *model.GenerateContentRequest) ([]string, error) {
 	if s.config.OpenAI.APIKey == "" {
-		return "", fmt.Errorf("OpenAI API key is not configured")
+		return nil, fmt.Errorf("OpenAI API key is not configured")
 	}
 
 	systemPrompt := s.buildSystemPrompt(req)
 	userPrompt := s.buildUserPrompt(req)
 
-	content, err := s.callOpenAI(systemPrompt, userPrompt)
+	raw, err := s.callOpenAI(systemPrompt, userPrompt)
 	if err != nil {
-		return "", fmt.Errorf("failed to call OpenAI API: %v", err)
+		return nil, fmt.Errorf("failed to call OpenAI API: %v", err)
 	}
 
-	return content, nil
+	return parseVersions(raw), nil
 }
 
-// buildSystemPrompt 게시글 타입별 역할·규칙 정의 (system role)
+// parseVersions [버전1] ~ [버전3] 마커 기준으로 분리
+func parseVersions(raw string) []string {
+	markers := []string{"[버전1]", "[버전2]", "[버전3]"}
+	var versions []string
+
+	for i, marker := range markers {
+		idx := strings.Index(raw, marker)
+		if idx == -1 {
+			break
+		}
+		start := idx + len(marker)
+		end := len(raw)
+		if i+1 < len(markers) {
+			nextIdx := strings.Index(raw[start:], markers[i+1])
+			if nextIdx != -1 {
+				end = start + nextIdx
+			}
+		}
+		v := strings.TrimSpace(raw[start:end])
+		if v != "" {
+			versions = append(versions, v)
+		}
+	}
+
+	if len(versions) == 0 {
+		return []string{strings.TrimSpace(raw)}
+	}
+	return versions
+}
+
+// buildSystemPrompt 게시글 타입별 역할·규칙 정의
 func (s *aiService) buildSystemPrompt(req *model.GenerateContentRequest) string {
 	var sb strings.Builder
 
-	// 타입별 페르소나 + 목적
+	sb.WriteString("너는 상황에 따라 글을 다르게 작성하는 마케팅 전문가다.\n\n")
+
+	sb.WriteString("[공통 규칙]\n")
+	sb.WriteString("- 과한 광고 느낌 금지\n")
+	sb.WriteString("- 실제 사람이 쓴 것처럼 자연스럽게\n")
+	sb.WriteString("- 짧고 가독성 좋게\n")
+	sb.WriteString("- 불필요한 과장 표현 금지\n")
+	sb.WriteString("- 제공되지 않은 정보는 절대 추측하거나 만들어내지 마세요.\n\n")
+
 	switch req.Type {
-
-	case model.TypeSellGold:
-		sb.WriteString(
-			"당신은 개인 사용자가 특정 지역의 금은방 사장님들에게 금 매입을 요청하는 글을 작성하는 전문가입니다.\n" +
-				"이 글의 독자는 일반 소비자가 아니라, 선택된 지역 내 금은방 사장님들입니다.\n" +
-				"목표는 금은방으로부터 매입 가능 여부나 견적 제안을 받는 것입니다.\n\n" +
-				"- 톤: 담백하고 객관적이며 신뢰 위주의 문체\n" +
-				"- 개인적인 감정, 추억, 사연은 절대 포함하지 마세요.\n" +
-				"- 중고거래(C2C)처럼 보이는 표현은 사용하지 마세요.\n" +
-				"- '판매합니다' 보다는 '매입 가능 여부 문의', '매입 제안 요청' 표현을 사용하세요.\n" +
-				"- 글의 대상은 금은방 사장님이며, 일반 중고거래 글처럼 보이면 안 됩니다.\n",
-		)
-
-	case model.TypeBuyGold:
-		sb.WriteString(
-			"당신은 금은방 사장님입니다. 일반 사용자들을 대상으로 한 금 매입 홍보 게시글 본문을 작성하세요.\n" +
-				"목표는 매장 방문 또는 연락을 유도하는 것입니다.\n\n" +
-				"- 톤: 전문적이고 신뢰감 있는 어조\n" +
-				"- 높은 매입가, 정직한 거래, 신뢰 요소 강조\n" +
-				"- 과장되거나 허위 느낌의 표현은 피하세요.\n",
-		)
+	case model.TypeStoreNews:
+		sb.WriteString("[역할] 금은방 사장\n")
+		sb.WriteString("[목표] 신뢰 확보, 방문 유도\n")
+		sb.WriteString("[특징] 동네 장사 느낌, 편하게 방문 유도, 친근하지만 과하지 않게\n")
 
 	case model.TypeProductNews:
-		sb.WriteString(
-			"당신은 금은방 전문가입니다. 금 제품 관련 소식 게시글의 본문을 작성하세요.\n\n" +
-				"- 톤: 정보 중심, 객관적이고 이해하기 쉬운 문체\n" +
-				"- 제품 특징과 장점을 간결하게 전달\n",
-		)
+		sb.WriteString("[역할] 금은방 사장\n")
+		sb.WriteString("[목표] 상품 관심 유도\n")
+		sb.WriteString("[특징] 자연스럽게 제품 소개, 부담 없는 느낌\n")
 
-	case model.TypeStoreNews:
-		sb.WriteString(
-			"당신은 금은방 사장님입니다. 매장 소식 또는 이벤트 안내 게시글 본문을 작성하세요.\n\n" +
-				"- 톤: 친근하지만 상업적이지 않게\n" +
-				"- 이벤트, 휴무, 혜택 등 핵심 정보 위주\n",
-		)
+	case model.TypeBuyGold:
+		sb.WriteString("[역할] 금은방 사장\n")
+		sb.WriteString("[목표] 금을 팔도록 유도\n")
+		sb.WriteString("[특징] 공감형, 신뢰감, 문의 유도\n")
+
+	case model.TypeSellGold:
+		sb.WriteString("[역할] 일반 사용자 (금 판매 희망)\n")
+		sb.WriteString("[목표] 금은방에 빠르게 판매\n")
+		sb.WriteString("[특징] 투박하고 현실적인 말투, 개인 느낌, 광고 느낌 없이\n")
 
 	case model.TypeQuestion:
-		sb.WriteString(
-			"당신은 금 관련 질문 게시글 작성 전문가입니다. 질문 게시글 본문을 작성하세요.\n\n" +
-				"- 질문의 배경과 상황을 간단히 설명\n" +
-				"- 구체적인 상황과 궁금한 점을 명확히 서술\n" +
-				"- 답변자가 이해하기 쉬운 구조로 작성\n",
-		)
+		sb.WriteString("[역할] 금에 대해 궁금한 일반 사용자\n")
+		sb.WriteString("[목표] 명확한 질문 전달, 답변 유도\n")
+		sb.WriteString("[특징] 솔직하고 구체적, 상황 설명 포함\n")
 
 	default:
-		sb.WriteString(
-			"당신은 금 관련 게시글 작성 전문가입니다. 아래 정보를 바탕으로 게시글 본문을 작성하세요.\n",
-		)
+		sb.WriteString("[역할] 금 관련 글 작성자\n")
+		sb.WriteString("[목표] 정보 전달\n")
 	}
 
-	// 공통 규칙
-	sb.WriteString("\n[중요 작성 규칙]\n")
-	sb.WriteString("- 제공되지 않은 정보는 절대 추측하거나 만들어내지 마세요.\n")
-	sb.WriteString("- 값이 없는 항목(금 종류, 중량, 가격, 지역 등)은 해당 내용을 언급하지 말고 문장을 생략하세요.\n")
-	sb.WriteString("- 개인적인 스토리(추억, 소장품, 애정, 선물 등)는 절대 포함하지 마세요.\n")
-	sb.WriteString("- 같은 입력이라도 문장 표현과 문단 구성을 매번 조금씩 바꿔 반복 티가 나지 않게 작성하세요.\n")
-	sb.WriteString("- 본문은 2~4개의 짧은 문단으로 구성하고, 줄바꿈을 활용해 가독성을 높이세요.\n")
-	sb.WriteString("- '아래는', '다음은', '정리하면' 같은 메타 설명은 절대 사용하지 마세요.\n")
-
-	// 출력 형식 지시
-	sb.WriteString("\n제목, 주석, 설명, 추가 안내 없이 게시글 본문 텍스트만 출력하세요.")
+	sb.WriteString("\n[출력 형식]\n")
+	sb.WriteString("- 아래 형식으로 정확히 3개 버전을 출력하세요.\n")
+	sb.WriteString("- 각 버전은 서로 다른 느낌과 표현을 사용하세요.\n")
+	sb.WriteString("- 제목, 주석, 설명 없이 본문 텍스트만 출력하세요.\n\n")
+	sb.WriteString("[버전1]\n(본문)\n\n[버전2]\n(본문)\n\n[버전3]\n(본문)")
 
 	return sb.String()
 }
 
-// buildUserPrompt 실제 입력 데이터 정리 (user role)
+// buildUserPrompt 실제 입력 데이터 정리
 func (s *aiService) buildUserPrompt(req *model.GenerateContentRequest) string {
 	var sb strings.Builder
 
-	sb.WriteString("아래 정보를 바탕으로 게시글 본문을 작성해주세요.\n\n")
+	sb.WriteString("아래 정보를 바탕으로 게시글 본문 3가지 버전을 작성해주세요.\n\n")
 
 	if req.Title != nil && *req.Title != "" {
 		sb.WriteString(fmt.Sprintf("제목: %s\n", *req.Title))
 	}
 
-	// 키워드에서 제목과 중복되는 항목을 제거하고 추가 요청사항만 표시
 	titleVal := ""
 	if req.Title != nil {
 		titleVal = *req.Title
@@ -196,8 +205,8 @@ func (s *aiService) callOpenAI(systemPrompt, userPrompt string) (string, error) 
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},
 		},
-		Temperature: 0.7,
-		MaxTokens:   500,
+		Temperature: 0.6,
+		MaxTokens:   1200,
 	}
 
 	jsonData, err := json.Marshal(reqData)

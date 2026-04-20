@@ -197,8 +197,8 @@ type GenerateContentRequest struct {
 
 // GenerateContentResponse AI 컨텐츠 생성 응답
 type GenerateContentResponse struct {
-	Content     string `json:"content"`
-	GeneratedAt string `json:"generated_at,omitempty"`
+	Versions    []string `json:"versions"`
+	GeneratedAt string   `json:"generated_at,omitempty"`
 }
 
 // generatePostSlug는 게시글 제목으로 URL용 slug를 생성합니다

@@ -766,14 +766,14 @@ func (c *CommunityController) GenerateContent(ctx *gin.Context) {
 	}
 
 	// AI 서비스 호출
-	content, err := c.aiService.GenerateContent(&req)
+	versions, err := c.aiService.GenerateContent(&req)
 	if err != nil {
 		apperrors.InternalError(ctx, "AI 컨텐츠 생성에 실패했습니다")
 		return
 	}
 
 	ctx.JSON(http.StatusOK, model.GenerateContentResponse{
-		Content: content,
+		Versions: versions,
 	})
 }
 
