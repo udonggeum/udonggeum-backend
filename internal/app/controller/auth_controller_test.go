@@ -34,6 +34,9 @@ func setupAuthControllerTest(t *testing.T) (*gin.Engine, *AuthController, servic
 		"test-kakao-client-id",
 		"test-kakao-client-secret",
 		"http://localhost:8080/api/v1/auth/kakao/callback",
+		"test-google-client-id",
+		"test-google-client-secret",
+		"http://localhost:8080/api/v1/auth/google/callback",
 	)
 	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
 
@@ -100,7 +103,7 @@ func TestAuthController_Register_DuplicateEmail(t *testing.T) {
 	router, _, authService := setupAuthControllerTest(t)
 
 	// Register first user
-	_, _, err := authService.Register("test@example.com", "password123", "Test User", "", "010-1234-5678")
+	_, _, err := authService.Register("test@example.com", "password123", "Test User", "", "010-1234-5678", false, false, false, false)
 	require.NoError(t, err)
 
 	// Try to register with same email
@@ -128,7 +131,7 @@ func TestAuthController_Login_Success(t *testing.T) {
 	// Register a user first
 	email := "test@example.com"
 	password := "password123"
-	_, _, err := authService.Register(email, password, "Test User", "", "010-1234-5678")
+	_, _, err := authService.Register(email, password, "Test User", "", "010-1234-5678", false, false, false, false)
 	require.NoError(t, err)
 
 	// Login
@@ -159,7 +162,7 @@ func TestAuthController_Login_WrongPassword(t *testing.T) {
 	router, _, authService := setupAuthControllerTest(t)
 
 	// Register a user
-	_, _, err := authService.Register("test@example.com", "password123", "Test User", "", "010-1234-5678")
+	_, _, err := authService.Register("test@example.com", "password123", "Test User", "", "010-1234-5678", false, false, false, false)
 	require.NoError(t, err)
 
 	// Login with wrong password
@@ -183,7 +186,7 @@ func TestAuthController_GetMe_Success(t *testing.T) {
 	router, _, authService := setupAuthControllerTest(t)
 
 	// Register and get token
-	user, tokens, err := authService.Register("test@example.com", "password123", "Test User", "", "010-1234-5678")
+	user, tokens, err := authService.Register("test@example.com", "password123", "Test User", "", "010-1234-5678", false, false, false, false)
 	require.NoError(t, err)
 
 	// Get user info

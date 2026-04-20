@@ -24,6 +24,9 @@ func setupAuthServiceTest(t *testing.T) (AuthService, *repository.UserRepository
 		"test-kakao-client-id",
 		"test-kakao-client-secret",
 		"http://localhost:8080/api/v1/auth/kakao/callback",
+		"test-google-client-id",
+		"test-google-client-secret",
+		"http://localhost:8080/api/v1/auth/google/callback",
 	)
 
 	return authService, &userRepo
@@ -66,6 +69,7 @@ func TestAuthService_Register(t *testing.T) {
 				tt.userName,
 				"", // nickname (auto-generated)
 				tt.phone,
+				false, false, false, false,
 			)
 
 			if tt.wantErr != nil {
@@ -92,7 +96,7 @@ func TestAuthService_Login(t *testing.T) {
 	// Register a user first
 	email := "test@example.com"
 	password := "password123"
-	_, _, err := authService.Register(email, password, "Test User", "", "010-1234-5678")
+	_, _, err := authService.Register(email, password, "Test User", "", "010-1234-5678", false, false, false, false)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -151,6 +155,7 @@ func TestAuthService_GetUserByID(t *testing.T) {
 		"Test User",
 		"", // nickname (auto-generated)
 		"010-1234-5678",
+		false, false, false, false,
 	)
 	require.NoError(t, err)
 
@@ -198,6 +203,7 @@ func TestAuthService_PasswordSecurity(t *testing.T) {
 		"Test User",
 		"", // nickname (auto-generated)
 		"010-1234-5678",
+		false, false, false, false,
 	)
 	require.NoError(t, err)
 
@@ -215,6 +221,7 @@ func TestAuthService_TokenGeneration(t *testing.T) {
 		"Test User",
 		"", // nickname (auto-generated)
 		"010-1234-5678",
+		false, false, false, false,
 	)
 	require.NoError(t, err)
 
