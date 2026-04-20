@@ -45,8 +45,8 @@ func SendVerificationSMS(phoneNumber, code string) error {
 	// 개발 모드: Solapi 설정이 없으면 콘솔에 출력만
 	if apiKey == "" || apiSecret == "" || fromNumber == "" {
 		log.Printf("================================")
-		log.Printf("[개발 모드] SMS 인증 활성화")
-		log.Printf("휴대폰 인증 코드를 아무거나 입력하세요")
+		log.Printf("[개발 모드] SMS 발송 생략 (Solapi 미설정)")
+		log.Printf("인증 코드: %s (전화번호: %s)", code, phoneNumber)
 		log.Printf("(실제 SMS는 발송되지 않습니다)")
 		log.Printf("================================")
 		return nil

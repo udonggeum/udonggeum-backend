@@ -94,19 +94,10 @@ func VerifyPhoneCode(phone, code string) bool {
 	secretKey := os.Getenv("NAVER_SENS_SECRET_KEY")
 	fromNumber := os.Getenv("NAVER_SENS_FROM_NUMBER")
 
-	if serviceID == "" || accessKey == "" || secretKey == "" || fromNumber == "" {
-		// 개발 모드: 6자리 숫자면 모두 허용
-		if len(code) == 6 {
-			log.Printf("[개발 모드] 휴대폰 인증 성공: %s", phone)
-			return true
-		}
-		return false
-	}
-
 	verificationMutex.RLock()
-	defer verificationMutex.RUnlock()
-
 	storedCode, exists := phoneVerificationCodes[phone]
+	verificationMutex.RUnlock()
+
 	if !exists {
 		return false
 	}
@@ -122,11 +113,13 @@ func VerifyPhoneCode(phone, code string) bool {
 	}
 
 	// Delete the code after successful verification
-	verificationMutex.RUnlock()
 	verificationMutex.Lock()
 	delete(phoneVerificationCodes, phone)
 	verificationMutex.Unlock()
-	verificationMutex.RLock()
+
+	if serviceID == "" || accessKey == "" || secretKey == "" || fromNumber == "" {
+		log.Printf("[개발 모드] 휴대폰 인증 성공: %s", phone)
+	}
 
 	return true
 }
